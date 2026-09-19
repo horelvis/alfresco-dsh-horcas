@@ -5,7 +5,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
-import { assessMounts, parseMounts } from '../domain/mounts.js';
+import { assessMounts, parseLsblk, parseMounts } from '../domain/mounts.js';
 import { runShell, type HostRef } from '../infra/exec.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -20,6 +20,11 @@ function destinationHost(project: Awaited<ReturnType<typeof loadProject>>): Host
 
 async function readMounts(host: HostRef): Promise<string> {
   const result = await runShell(host, 'cat /proc/mounts 2>/dev/null || findmnt -rn -o SOURCE,TARGET,FSTYPE,OPTIONS');
+  return result.stdout;
+}
+
+async function readLsblk(host: HostRef): Promise<string> {
+  const result = await runShell(host, 'lsblk -dn -o NAME,TRAN,VENDOR,MODEL 2>/dev/null');
   return result.stdout;
 }
 
@@ -56,8 +61,10 @@ export function registerMountTools(ctx: Context): void {
         const host = destinationHost(project);
         // El origen puede estar en el host de operacion (local); el destino, en el remoto.
         const sourceMounts = parseMounts(await readMounts({ name: 'local' }));
+        const sourceDevices = parseLsblk(await readLsblk({ name: 'local' }));
         const targetMounts = host.name === 'local' ? sourceMounts : parseMounts(await readMounts(host));
-        const assessment = assessMounts(sourcePath, targetPath, sourceMounts, targetMounts);
+        const targetDevices = host.name === 'local' ? sourceDevices : parseLsblk(await readLsblk(host));
+        const assessment = assessMounts(sourcePath, targetPath, sourceMounts, targetMounts, sourceDevices, targetDevices);
         return json(assessment);
       },
     }),

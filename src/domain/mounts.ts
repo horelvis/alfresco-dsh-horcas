@@ -25,6 +25,70 @@ export interface MountEntry {
 
 export type MountKind = 'LOCAL' | 'NFS' | 'CIFS' | 'SAN' | 'OTHER_REMOTE' | 'UNKNOWN';
 
+/**
+ * Tipo de dispositivo de bloque. En una VM, un `/dev/sdb1` puede ser:
+ * - un disco virtual del hipervisor (VIRTUAL) sobre un datastore compartido,
+ * - un LUN iSCSI/FC (SAN) aunque el fs sea ext4/xfs,
+ * - un disco realmente local (LOCAL_DISK).
+ * `df`/`/proc/mounts` NO lo distinguen; hace falta `lsblk`/`/sys`.
+ */
+export type DeviceKind = 'LOCAL_DISK' | 'SAN' | 'VIRTUAL' | 'UNKNOWN';
+
+export interface BlockDevice {
+  /** Nombre base sin particion (sdb, nvme0n1, dm-0). */
+  name: string;
+  /** Transporte: sata, virtio, iscsi, fc, fcoe, nvme, usb... */
+  transport?: string;
+  vendor?: string;
+  model?: string;
+}
+
+const SAN_TRANSPORTS = new Set(['iscsi', 'fc', 'fcoe']);
+const VIRTUAL_TRANSPORTS = ['virtio', 'xen', 'vmw', 'vmbus'];
+const SAN_VENDOR_RE = /netapp|emc|hitachi|equallogic|3par|xtremio|vplex|infortrend|pure storage|solidfire|powerstore|unity|vnx/i;
+const VIRTUAL_VENDOR_RE = /vmware|qemu|virtual|kvm|xen|hyper-v|microsoft virtual/i;
+
+/** Parsea `lsblk -dn -o NAME,TRAN,VENDOR,MODEL` (una linea por disco). */
+export function parseLsblk(text: string): BlockDevice[] {
+  const devices: BlockDevice[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const [name, transport, vendor, ...modelParts] = line.split(/\s+/);
+    if (!name) continue;
+    devices.push({
+      name: (name as string).replace(/\d+$/, '').replace(/^\/dev\//, ''),
+      transport: transport && transport !== '-' ? transport.toLowerCase() : undefined,
+      vendor: vendor && vendor !== '-' ? vendor : undefined,
+      model: modelParts.join(' ').trim() || undefined,
+    });
+  }
+  return devices;
+}
+
+/** Nombre base de dispositivo a partir del device de un montaje (`/dev/sdb1` -> `sdb`). */
+export function baseDevice(device: string): string {
+  if (device.startsWith('/dev/mapper/') || device.startsWith('/dev/dm-')) return device.replace(/^\/dev\//, '');
+  return device.replace(/^\/dev\//, '').replace(/p?\d+$/, '');
+}
+
+export function classifyDevice(device: BlockDevice | undefined): DeviceKind {
+  if (!device) return 'UNKNOWN';
+  const transport = (device.transport ?? '').toLowerCase();
+  const vendor = device.vendor ?? '';
+  const model = device.model ?? '';
+  if (SAN_TRANSPORTS.has(transport)) return 'SAN';
+  if (SAN_VENDOR_RE.test(vendor) || SAN_VENDOR_RE.test(model)) return 'SAN';
+  if (VIRTUAL_TRANSPORTS.some((t) => transport.includes(t)) || VIRTUAL_VENDOR_RE.test(vendor)) return 'VIRTUAL';
+  return 'LOCAL_DISK';
+}
+
+export function deviceForMount(mount: MountEntry | undefined, devices: BlockDevice[]): BlockDevice | undefined {
+  if (!mount) return undefined;
+  const base = baseDevice(mount.device);
+  return devices.find((d) => d.name === base);
+}
+
 const NFS_TYPES = new Set(['nfs', 'nfs4']);
 const CIFS_TYPES = new Set(['cifs', 'smb3', 'smbfs']);
 const SAN_TYPES = new Set(['iscsi', 'fcoe', 'ocfs2', 'gfs2']);
@@ -68,7 +132,7 @@ export function mountFor(path: string, mounts: MountEntry[]): MountEntry | undef
 
 const normalize = (path: string): string => (path.replace(/\/+$/, '') || '/');
 
-export function classify(mount: MountEntry | undefined): MountKind {
+export function classify(mount: MountEntry | undefined, device?: BlockDevice): MountKind {
   if (!mount) return 'UNKNOWN';
   const fs = mount.fsType;
   if (NFS_TYPES.has(fs)) return 'NFS';
@@ -77,6 +141,8 @@ export function classify(mount: MountEntry | undefined): MountKind {
   // Un LUN SAN formateado (xfs/ext4) se monta como fs local, pero el device lo delata
   // (multipath/iscsi): /dev/mapper/mpath*, /dev/sd*, /dev/dm-*.
   if (isSanDevice(mount.device)) return 'SAN';
+  // En VM, un disco virtual puede estar sobre un datastore compartido (SAN): `lsblk` lo revela.
+  if (device && classifyDevice(device) === 'SAN') return 'SAN';
   if (LOCAL_TYPES.has(fs)) return 'LOCAL';
   return 'OTHER_REMOTE';
 }
@@ -125,11 +191,15 @@ export function assessMounts(
   targetPath: string,
   sourceMounts: MountEntry[],
   targetMounts: MountEntry[],
+  sourceDevices: BlockDevice[] = [],
+  targetDevices: BlockDevice[] = [],
 ): MountAssessment {
   const source = mountFor(sourcePath, sourceMounts);
   const target = mountFor(targetPath, targetMounts);
-  const sourceKind = classify(source);
-  const targetKind = classify(target);
+  const sourceDevice = deviceForMount(source, sourceDevices);
+  const targetDevice = deviceForMount(target, targetDevices);
+  const sourceKind = classify(source, sourceDevice);
+  const targetKind = classify(target, targetDevice);
   const findings: MountFinding[] = [];
 
   const sourceBacking = backingStore(source);
@@ -172,6 +242,18 @@ export function assessMounts(
       risk: 'DOUBLE_HOP',
       severity: 'INFO',
       detail: 'Ambos extremos son remotos: una copia server-side evita pasar por el host de operacion',
+    });
+  }
+
+  // Aviso de VM: un disco virtual puede residir en un datastore compartido (SAN) aunque `df` lo vea
+  // como local. Si origen y destino estan en el MISMO datastore, la copia puede no aislarse.
+  if (sourceDevice && targetDevice && sourceDevice.name !== targetDevice.name
+      && classifyDevice(sourceDevice) === 'VIRTUAL' && classifyDevice(targetDevice) === 'VIRTUAL'
+      && sourceDevice.vendor && sourceDevice.vendor === targetDevice.vendor) {
+    findings.push({
+      risk: 'SAME_BACKING_STORE',
+      severity: 'WARN',
+      detail: `Discos virtuales del mismo hipervisor (${sourceDevice.vendor}): verifica que origen y destino NO compartan datastore`,
     });
   }
 

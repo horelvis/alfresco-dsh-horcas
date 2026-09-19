@@ -25,6 +25,7 @@ export const READ_ONLY_TOOLS = [
   'migrator_jira_export',
   'migrator_review',
   'migrator_mount_check',
+  'migrator_validate',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',
@@ -33,7 +34,7 @@ export const READ_ONLY_TOOLS = [
 
 // Tools de escritura: actuan SOLO sobre el destino; requieren aprobacion explicita.
 // `migrator_backup` no toca origen ni destino pero ejecuta comandos y crea artefactos: tambien requiere aprobacion.
-export const WRITE_TOOLS = ['migrator_target', 'migrator_execute', 'migrator_run_steps', 'migrator_backup', 'migrator_reindex', 'migrator_provision', 'migrator_copy_content'] as const;
+export const WRITE_TOOLS = ['migrator_target', 'migrator_execute', 'migrator_run_steps', 'migrator_backup', 'migrator_reindex', 'migrator_provision', 'migrator_copy_content', 'migrator_wizard'] as const;
 
 const KNOWN = new Set<string>([...READ_ONLY_TOOLS, ...WRITE_TOOLS]);
 
