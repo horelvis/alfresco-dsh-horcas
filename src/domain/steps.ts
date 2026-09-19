@@ -93,6 +93,13 @@ const copyContent: StepDefinition = {
     if (!source || !target) {
       return fail('copy-content', 'faltan rutas de content store');
     }
+    // Guarda NAS/SAN: si origen y destino comparten backing store remoto, la copia se corrompe.
+    if (process.env.MIGRATOR_SKIP_MOUNT_GUARD !== 'true') {
+      const guard = await mountGuard(source, target);
+      if (guard) {
+        return fail('copy-content', guard);
+      }
+    }
     if (ctx.dryRun) {
       return skipped('copy-content', `dry-run: ${source} -> ${target}`);
     }
@@ -108,6 +115,20 @@ const copyContent: StepDefinition = {
     return requireResult('copy-content', await runShell(ctx.destination, plan.command));
   },
 };
+
+/** Lee los montajes del host local y del destino y evalua el riesgo de copia. */
+async function mountGuard(source: string, target: string): Promise<string | undefined> {
+  try {
+    const { parseMounts, assessMounts } = await import('./mounts.js');
+    const { runShell } = await import('../infra/exec.js');
+    const local = parseMounts((await runShell({ name: 'local' }, 'cat /proc/mounts 2>/dev/null')).stdout);
+    const assessment = assessMounts(source, target, local, local);
+    const blocker = assessment.findings.find((f) => f.severity === 'BLOCKER');
+    return blocker ? `Guarda de montaje: ${blocker.detail}` : undefined;
+  } catch {
+    return undefined; // sin /proc/mounts (p.ej. macOS): no bloquear
+  }
+}
 
 /** `restore-target-db`: restaura el dump en la BD del DESTINO. */
 const restoreTargetDb: StepDefinition = {

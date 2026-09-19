@@ -24,6 +24,7 @@ export const READ_ONLY_TOOLS = [
   'migrator_checklist',
   'migrator_jira_export',
   'migrator_review',
+  'migrator_mount_check',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',

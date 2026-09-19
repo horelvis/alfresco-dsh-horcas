@@ -60,6 +60,28 @@ export function upgradeGatesSkill(): SkillContent {
   };
 }
 
+export function storageMountsSkill(): SkillContent {
+  return {
+    name: 'alfresco-storage-mounts',
+    description:
+      'Riesgos de almacenamiento en VM Linux con NAS/SAN: content store sobre NFS/CIFS/LUN, mismo backing store origen/destino (corrompe la copia), doble salto por red y copia server-side. Cargar al planificar o revisar la copia de contenido.',
+    content: `# Almacenamiento del content store en VM (NAS/SAN)
+
+Es comun montar el content store en un volumen remoto:
+- **NFS/NFS4** (NAS Linux), **CIFS/SMB** (NAS Windows), **LUN iSCSI/FC** (SAN, se ve como xfs/ext4 pero el device es \`/dev/mapper/mpath*\`).
+
+Riesgos y reglas:
+1. **Mismo backing store** (mismo export NFS, mismo share CIFS o mismo LUN) en origen y destino: la copia **se corrompe** (escribe sobre el origen). \`migrator_mount_check\` lo marca como **BLOCKER** y \`copy-content\` aborta.
+2. **Doble salto por red**: si ambos extremos son remotos, una copia **server-side** (rsync remoto o herramienta del NAS) evita pasar por el host de operacion.
+3. **Rendimiento impredecible**: \`rsync\` sobre NFS/CIFS es sensible a latencia; valorar snapshots del NAS/SAN para el corte.
+4. **Permisos/ownership**: NFS con \`root_squash\` o CIFS pueden no preservar el uid/gid de Alfresco; verificar tras la copia.
+5. **Snapshots de almacenamiento** (NAS/SAN) son una via de rollback rapida y coherente, preferible a copia por red para volumenes grandes.
+
+Diagnostico: \`migrator_mount_check\` (read-only) clasifica los montajes de origen y destino y lista los riesgos.
+`,
+  };
+}
+
 export function migrationPlaybookSkill(): SkillContent {
   return {
     name: 'alfresco-migration-playbook',
@@ -82,7 +104,7 @@ Reglas duras: el ORIGEN es inmutable; las escrituras van solo al DESTINO y con a
 }
 
 export async function allSkills(): Promise<SkillContent[]> {
-  return [await loadRecommendationSkill(), upgradeGatesSkill(), migrationPlaybookSkill()];
+  return [await loadRecommendationSkill(), upgradeGatesSkill(), migrationPlaybookSkill(), storageMountsSkill()];
 }
 
 export interface SkillsContext {
@@ -96,6 +118,7 @@ export function installSkills(ctx: SkillsContext): void {
   const register = (skill: SkillContent) => ctx.skills.register({ ...skill, source: 'runtime' });
   register(upgradeGatesSkill());
   register(migrationPlaybookSkill());
+  register(storageMountsSkill());
   // La skill de recomendaciones se carga desde disco (async): se registra cuando este lista.
   void loadRecommendationSkill().then(register).catch(() => undefined);
 }

@@ -22,6 +22,7 @@ import { registerReindexTools } from './tools/reindex.js';
 import { registerProvisionTools } from './tools/provision.js';
 import { registerContentCopyTools } from './tools/content-copy.js';
 import { registerReviewerTools } from './tools/reviewer.js';
+import { registerMountTools } from './tools/mounts.js';
 
 export const name = 'dsh-plugin-alfresco-migrator';
 export const inject = ['tools', 'systemPrompt', 'skills'];
@@ -40,6 +41,7 @@ export function apply(ctx: Context): void {
   registerProvisionTools(ctx);
   registerContentCopyTools(ctx);
   registerReviewerTools(ctx);
+  registerMountTools(ctx);
   registerExperienceTools(ctx);
   registerExecutionTools(ctx);
   registerWriteTools(ctx);
