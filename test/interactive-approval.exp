@@ -1,0 +1,25 @@
+#!/usr/bin/expect -f
+# Driver interactivo: arranca dsh con aprobacion interactiva y responde "y" al prompt.
+# Uso: expect test/interactive-approval.exp <answer> [task...]
+set timeout 300
+set answer [lindex $argv 0]
+set task [lrange $argv 1 end]
+
+set env(MIGRATOR_APPROVAL) "interactive"
+set env(DEEPSEEK_API_KEY) $env(SPRING_AI_OPENAI_API_KEY)
+set env(DEEPSEEK_BASE_URL) $env(SPRING_AI_OPENAI_BASE_URL)
+
+spawn dsh --profile headless --patch ./cordis.yml $task
+
+expect {
+    -re {\[aprobacion\]} {
+        send "$answer\r"
+        exp_continue
+    }
+    -re {requires approval} {
+        puts "\n>>> SIN CANAL DE APROBACION"
+        exp_continue
+    }
+    timeout { puts "\n>>> TIMEOUT"; exit 1 }
+    eof {}
+}
