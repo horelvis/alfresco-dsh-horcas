@@ -2,7 +2,7 @@
  * Coherencia DB <-> content store y forense de referencias colgantes (read-only sobre el origen).
  * Portado del core Spring: cuenta refs/orphans/dangling y, para cada colgado, resuelve nodo/tipo/ruta.
  */
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { queryRows, connectSource, sourceDbConfigFromEnv, selectOnly } from '../infra/pg.js';
 
@@ -11,7 +11,8 @@ export interface CoherenceReport {
   storeObjects: number;
   dangling: number;
   orphans: number;
-  verdict: 'PASS' | 'FAIL';
+  sizeMismatch: number;
+  verdict: 'PASS' | 'WARN' | 'FAIL';
   samples: string[];
 }
 
@@ -26,8 +27,9 @@ export interface DanglingReference {
 
 const REFS_SQL = 'SELECT id, content_url, content_size, orphan_time FROM alf_content_url';
 
-async function listStoreObjects(root: string): Promise<string[]> {
-  const objects: string[] = [];
+/** Objetos del content store: ruta relativa -> tamano en bytes. */
+async function listStoreObjects(root: string): Promise<Map<string, number>> {
+  const objects = new Map<string, number>();
   async function walk(dir: string, prefix: string): Promise<void> {
     let entries;
     try {
@@ -41,7 +43,12 @@ async function listStoreObjects(root: string): Promise<string[]> {
       if (entry.isDirectory()) {
         await walk(path.join(dir, entry.name), relative);
       } else if (entry.name.endsWith('.bin')) {
-        objects.push(relative);
+        try {
+          const { size } = await stat(path.join(dir, entry.name));
+          objects.set(relative, size);
+        } catch {
+          objects.set(relative, -1); // ilegible: tamano desconocido
+        }
       }
     }
   }
@@ -51,22 +58,47 @@ async function listStoreObjects(root: string): Promise<string[]> {
 
 const storeRelative = (contentUrl: string): string => contentUrl.replace(/^store:\/\//, '');
 
+export interface CoherenceDiff {
+  refs: number;
+  storeObjects: number;
+  dangling: string[];
+  orphans: string[];
+  sizeMismatch: Array<{ path: string; db: number; store: number }>;
+  verdict: 'PASS' | 'WARN' | 'FAIL';
+}
+
+/** Comparacion pura (hechos) de referencias DB contra objetos del store. */
+export function diffCoherence(refSize: Map<string, number>, objects: Map<string, number>): CoherenceDiff {
+  const dangling = [...refSize.keys()].filter((rel) => !objects.has(rel));
+  const orphans = [...objects.keys()].filter((rel) => !refSize.has(rel));
+  const sizeMismatch = [...refSize.entries()]
+    .filter(([rel, size]) => {
+      const storeSize = objects.get(rel);
+      return storeSize !== undefined && storeSize >= 0 && size > 0 && storeSize !== size;
+    })
+    .map(([rel, size]) => ({ path: rel, db: size, store: objects.get(rel) as number }));
+  const verdict = dangling.length > 0 ? 'FAIL' : orphans.length > 0 || sizeMismatch.length > 0 ? 'WARN' : 'PASS';
+  return { refs: refSize.size, storeObjects: objects.size, dangling, orphans, sizeMismatch, verdict };
+}
+
 export async function checkCoherence(storeRoot: string): Promise<CoherenceReport> {
   const client = await connectSource(sourceDbConfigFromEnv());
   try {
     const refs = await queryRows(client, REFS_SQL);
-    const refUrls = new Set(refs.map((r) => String(r.content_url)));
+    const refSize = new Map<string, number>();
+    for (const row of refs) {
+      refSize.set(storeRelative(String(row.content_url)), Number(row.content_size ?? 0));
+    }
     const objects = await listStoreObjects(storeRoot);
-    const objectSet = new Set(objects);
-    const dangling = [...refUrls].filter((url) => !objectSet.has(storeRelative(url)));
-    const orphans = objects.filter((obj) => !refUrls.has(`store://${obj}`));
+    const diff = diffCoherence(refSize, objects);
     return {
-      refs: refUrls.size,
-      storeObjects: objects.length,
-      dangling: dangling.length,
-      orphans: orphans.length,
-      verdict: dangling.length > 0 ? 'FAIL' : 'PASS',
-      samples: dangling.slice(0, 5),
+      refs: diff.refs,
+      storeObjects: diff.storeObjects,
+      dangling: diff.dangling.length,
+      orphans: diff.orphans.length,
+      sizeMismatch: diff.sizeMismatch.length,
+      verdict: diff.verdict,
+      samples: diff.dangling.slice(0, 5),
     };
   } finally {
     await client.end();
@@ -86,7 +118,7 @@ export async function explainMissing(storeRoot: string): Promise<DanglingReferen
   const client = await connectSource(sourceDbConfigFromEnv());
   try {
     const refs = await queryRows(client, REFS_SQL);
-    const objects = new Set(await listStoreObjects(storeRoot));
+    const objects = new Set((await listStoreObjects(storeRoot)).keys());
     const result: DanglingReference[] = [];
     for (const row of refs) {
       const url = String(row.content_url);

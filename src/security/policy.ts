@@ -26,6 +26,7 @@ export const READ_ONLY_TOOLS = [
   'migrator_review',
   'migrator_mount_check',
   'migrator_validate',
+  'migrator_distinct_check',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',

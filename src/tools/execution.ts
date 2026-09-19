@@ -5,6 +5,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
+import { requireDistinctTarget } from '../domain/guards.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
 import { loadCheckpoints } from '../domain/checkpoints.js';
@@ -80,6 +81,7 @@ export function registerExecutionTools(ctx: Context): void {
       async execute(args) {
         const project = await loadProject(args.project);
         const execute = args.execute === true;
+        if (execute) requireDistinctTarget(project);
         const state = stateDir();
         const runId = args.runId ?? newRunId(project.project);
         const warnings: string[] = [];

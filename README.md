@@ -18,7 +18,7 @@ Read-only (permitidas por defecto):
 - `migrator_rehearsal_record` — registra la experiencia de una migración de prueba (clone/TEST).
 - `migrator_experience_latest` — consulta el último ensayo registrado.
 - `migrator_environment_parity` — drift del origen actual respecto al ensayo (BLOCKER impide PROD).
-- `migrator_coherence` — coherencia DB↔content store (refs/dangling/orphans/verdict).
+- `migrator_coherence` — coherencia DB↔content store (refs/dangling/orphans/**sizeMismatch**/verdict).
 - `migrator_dangling_explain` — para cada colgante, nodo (vivo/versión/papelera), tipo, nombre y ruta.
 - `migrator_strategy` — estrategia recomendada de contenido/BD/índice (C1–C5/D1–D2/I1–I2).
 - `migrator_estimate` — estimación por fases (assessment/pre-staging/cutover/post), cuello y riesgos.

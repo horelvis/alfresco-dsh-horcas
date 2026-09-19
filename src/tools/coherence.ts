@@ -30,13 +30,14 @@ export function registerCoherenceTools(ctx: Context): void {
             storeObjects: { type: 'number' },
             dangling: { type: 'number' },
             orphans: { type: 'number' },
+            sizeMismatch: { type: 'number' },
             verdict: { type: 'string' },
             samples: { type: 'array', items: { type: 'string' } },
           },
         },
         render: (_args, value) => {
-          const v = value as { refs: number; storeObjects: number; dangling: number; orphans: number; verdict: string };
-          return text(`refs=${v.refs} storeObjects=${v.storeObjects} dangling=${v.dangling} orphans=${v.orphans} verdict=${v.verdict}`);
+          const v = value as { refs: number; storeObjects: number; dangling: number; orphans: number; sizeMismatch: number; verdict: string };
+          return text(`refs=${v.refs} storeObjects=${v.storeObjects} dangling=${v.dangling} orphans=${v.orphans} sizeMismatch=${v.sizeMismatch} verdict=${v.verdict}`);
         },
       },
       async execute(args) {

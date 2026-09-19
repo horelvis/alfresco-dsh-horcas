@@ -5,6 +5,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
+import { requireDistinctTarget } from '../domain/guards.js';
 import { parseTotalIndexed, resolveReindexStrategy, reindexingAppCommand, scanModelsDirectory, writePrefixesFile } from '../domain/reindex.js';
 import { runShell, substitute } from '../infra/exec.js';
 import { stateDir } from '../domain/experience.js';
@@ -54,6 +55,7 @@ export function registerReindexTools(ctx: Context): void {
       },
       async execute(args) {
         const project = await loadProject(args.project);
+        if (args.execute === true) requireDistinctTarget(project);
         const last = project.target.version;
         const strategy = resolveReindexStrategy(project.target.search?.engine ?? 'opensearch', project.source.version, last);
         const modelsDir = args.modelsDir ?? process.env.MIGRATOR_DST_MODELS_DIR ?? '';

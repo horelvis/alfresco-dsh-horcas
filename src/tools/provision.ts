@@ -5,6 +5,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
+import { requireDistinctTarget } from '../domain/guards.js';
 import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import {
   destinationRunning,
@@ -61,6 +62,7 @@ export function registerProvisionTools(ctx: Context): void {
         const mode = process.env.MIGRATOR_DST_PROVISION ?? 'auto';
         const host = destinationHost(project);
         const execute = args.execute === true;
+        if (execute) requireDistinctTarget(project);
         const running = execute && (await destinationRunning(host));
         if (execute && shouldSkipProvision(mode, running)) {
           return json({ mode, skipped: true, hops: 0, files: [], executed: false });

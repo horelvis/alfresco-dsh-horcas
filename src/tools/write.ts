@@ -8,6 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
+import { requireDistinctTarget } from '../domain/guards.js';
 import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { loadSchemaReference } from '../domain/schema-reference.js';
 import { dataDir } from '../domain/data-dir.js';
@@ -58,6 +59,7 @@ export function registerWriteTools(ctx: Context): void {
         const config = await loadProject(args.project);
         const hops = resolveUpgradePath(config.source.version, config.target.version);
         const reference = await loadSchemaReference(config.source.version, dataDir());
+        if (args.execute === true) requireDistinctTarget(config);
         if (args.execute === true) {
           if (config.stage === 'prod') {
             const rehearsal = await latestRehearsal(stateDir(), config.project);
