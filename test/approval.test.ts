@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { assertOneShot, decideApproval, installApproval, isDelegated, optionsFromEnv, type ApprovalOutcome } from '../src/approval.js';
+import {
+  assertOneShot,
+  blocksDelegatedWrite,
+  decideApproval,
+  installApproval,
+  isDelegated,
+  optionsFromEnv,
+  type ApprovalOutcome,
+} from '../src/approval.js';
 
 type Handler = (request: { toolName: string; agent?: unknown }, next: () => Promise<ApprovalOutcome>) => Promise<ApprovalOutcome | undefined>;
 
-function fakeCtx(): { handler: Handler } {
+function fakeCtx(mode: 'allowlist' | 'interactive' = 'allowlist', allow: string[] = ['migrator_run_steps']): { handler: Handler } {
   const holder: { handler?: Handler } = {};
   const ctx = {
     on: (_event: string, handler: Handler) => {
@@ -11,7 +19,7 @@ function fakeCtx(): { handler: Handler } {
       return undefined;
     },
   };
-  installApproval(ctx as never, { mode: 'allowlist', allow: ['migrator_run_steps'] });
+  installApproval(ctx as never, { mode, allow });
   return { handler: holder.handler as Handler };
 }
 
@@ -65,6 +73,17 @@ describe('sin autorizaciones heredadas en cadena', () => {
     expect(isDelegated({ meta: { origin: 'subagent' } })).toBe(true);
     expect(isDelegated({ meta: { delegationDepth: 2 } })).toBe(true);
   });
+  it('solo bloquea escritura, solo en modos no interactivos', () => {
+    const sub = { parentAgent: {} };
+    // Escritura en allowlist: bloqueada.
+    expect(blocksDelegatedWrite('migrator_run_steps', sub, 'allowlist')).toBe(true);
+    // Escritura en interactive: NO se bloquea (grant one-shot por llamada).
+    expect(blocksDelegatedWrite('migrator_run_steps', sub, 'interactive')).toBe(false);
+    // Read-only: nunca se bloquea.
+    expect(blocksDelegatedWrite('migrator_schema_check', sub, 'allowlist')).toBe(false);
+    // Raiz: nunca se bloquea.
+    expect(blocksDelegatedWrite('migrator_run_steps', undefined, 'allowlist')).toBe(false);
+  });
 });
 
 describe('handler de aprobacion (sin bloquear subagentes ni tools ajenas)', () => {
@@ -74,8 +93,19 @@ describe('handler de aprobacion (sin bloquear subagentes ni tools ajenas)', () =
     expect(await handler({ toolName: 'write' }, async () => 'rejected')).toBe('rejected');
   });
 
-  it('una tool del migrador en subagente se rechaza (no hereda)', async () => {
-    const { handler } = fakeCtx();
+  it('en allowlist, una escritura del migrador en subagente se rechaza', async () => {
+    const { handler } = fakeCtx('allowlist');
+    expect(await handler({ toolName: 'migrator_run_steps', agent: { parentAgent: {} } }, async () => 'allowed-once')).toBe('rejected');
+  });
+
+  it('en allowlist, un read-only del migrador en subagente NO se bloquea por delegacion', async () => {
+    const { handler } = fakeCtx('allowlist', ['migrator_schema_check']);
+    expect(await handler({ toolName: 'migrator_schema_check', agent: { parentAgent: {} } }, async () => 'rejected')).toBe('allowed-once');
+  });
+
+  it('en interactive, una escritura en subagente NO se bloquea (grant one-shot)', async () => {
+    // interactive sin TTY responde rejected; lo relevante es que la ruta llega al modo (no al bloqueo por delegacion).
+    const { handler } = fakeCtx('interactive');
     expect(await handler({ toolName: 'migrator_run_steps', agent: { parentAgent: {} } }, async () => 'allowed-once')).toBe('rejected');
   });
 

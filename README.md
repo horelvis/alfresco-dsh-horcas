@@ -66,10 +66,12 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
   plugin lo garantiza (`assertOneShot`) y audita cada decisión en `.migrator/approvals.jsonl`.
   La durabilidad por tool vive en la config (`allowlist`/`allow`), no en un grant de sesión.
 
-  **Sin autorizaciones heredadas en cadena.** El arnés propaga la política a los subagentes
-  (`approval/policy` con `source: 'delegation'`); como el answerer es global, un subagente heredaría la
-  aprobación. Por eso el plugin **rechaza siempre** las peticiones de agentes delegados
-  (`parentAgent`/`meta.origin='subagent'`/`delegationDepth>0`).
+  **Sin autorizaciones heredadas en cadena (con matices).** `allowed-once` es one-shot y está atado a
+  la llamada, así que en `interactive`/`web` un subagente **no** se bloquea (aprobar ese borrado concreto
+  es correcto). En cambio `allowlist`/`allow` aprueban un **nombre de tool**, no una acción, y un
+  subagente heredaría esa concesión amplia: por eso ahí se rechazan las tools de **escritura** del
+  migrador pedidas por agentes delegados (`parentAgent`/`meta.origin='subagent'`/`delegationDepth>0`).
+  Las read-only nunca se bloquean, y las tools ajenas siempre se delegan.
 
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.

@@ -12,10 +12,18 @@
  *
  * Nota: el evento no expone los argumentos de la tool (solo nombre y motivo), por eso la allowlist
  * es por nombre; la granularidad por argumentos la impone el guard del plugin.
+ *
+ * Restriccion por delegacion (solo escritura y solo en modos NO interactivos):
+ * - `allowed-once` es one-shot y esta atado a la llamada, asi que la aprobacion interactiva (o la UI
+ *   de `web`) ya es segura con subagentes: NO se bloquea.
+ * - En `allowlist`/`allow` se aprueba un NOMBRE de tool (no una accion), de modo que un subagente
+ *   heredaria una concesion amplia. Ahi las tools de ESCRITURA del migrador pedidas por un subagente
+ *   se rechazan. Las de solo lectura no se ven afectadas.
  */
 import { createInterface } from 'node:readline/promises';
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { WRITE_TOOLS } from './security/policy.js';
 
 export type ApprovalMode = 'deny' | 'allow' | 'interactive' | 'allowlist';
 export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'unavailable';
@@ -56,6 +64,25 @@ export function isDelegated(agent: ApprovalAgent | undefined): boolean {
   if (agent.parentAgent) return true;
   if (agent.meta?.origin === 'subagent') return true;
   return (agent.meta?.delegationDepth ?? 0) > 0;
+}
+
+/** Escritura del migrador (tool en WRITE_TOOLS). */
+export function isWriteTool(toolName: string): boolean {
+  return (WRITE_TOOLS as readonly string[]).includes(toolName);
+}
+
+/**
+ * `true` si hay que rechazar por delegacion: solo aplica a tools de escritura y solo en modos no
+ * interactivos (`allowlist`/`allow`/`deny`). En `interactive` (y por tanto `web`) el grant es one-shot
+ * por llamada y no se bloquea.
+ */
+export function blocksDelegatedWrite(
+  toolName: string,
+  agent: ApprovalAgent | undefined,
+  mode: ApprovalMode,
+): boolean {
+  if (mode === 'interactive') return false;
+  return isWriteTool(toolName) && isDelegated(agent);
 }
 
 export function optionsFromEnv(env: NodeJS.ProcessEnv = process.env): ApprovalOptions {
@@ -146,8 +173,8 @@ export function installApproval(ctx: ApprovalContext, options: ApprovalOptions =
     if (!request.toolName.startsWith('migrator_')) {
       return next();
     }
-    // Nunca autorizar por herencia: las escrituras del migrador delegadas a subagentes se rechazan.
-    if (isDelegated(request.agent)) {
+    // Escritura heredada en modos no interactivos: se rechaza (la allowlist aprueba nombres, no acciones).
+    if (blocksDelegatedWrite(request.toolName, request.agent, options.mode)) {
       await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome: 'rejected' });
       return 'rejected';
     }
