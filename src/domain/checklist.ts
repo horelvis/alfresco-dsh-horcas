@@ -3,7 +3,7 @@
  * Portado de ChecklistService: Solr-off, Java 21/Tomcat 11, ActiveMQ 6.x o la Reindexing app
  * solo aplican segun la familia destino (y Solr-off solo en Enterprise).
  */
-import { atLeast, requiresSolrRemoval } from './versions.js';
+import { requiresSolrRemoval, breakingChangeGates } from './upgrade-paths.js';
 
 export type ChecklistStatus = 'OK' | 'WARN' | 'FAIL' | 'PENDING';
 export type ChecklistPhase = 'PRE' | 'POST';
@@ -113,13 +113,7 @@ export function buildChecklist(input: ChecklistInput): ChecklistItem[] {
 }
 
 export function gatesText(input: ChecklistInput): string {
-  const gates: string[] = [];
-  if (atLeast(input.targetVersion, '25.3')) gates.push('Java 21/Tomcat 10+');
-  if (atLeast(input.targetVersion, '26')) {
-    gates.push('ActiveMQ 6.x con autenticacion, eventos v2');
-    if (input.targetEdition === 'EE') gates.push('Solr no soportado (Enterprise)');
-  }
-  if (gates.length === 0) gates.push(`revisar breaking changes de ${input.targetVersion}`);
+  const gates = breakingChangeGates(input.targetVersion, input.targetEdition);
   return `Gates de breaking changes para ${input.targetVersion}: ${gates.join('; ')}`;
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { breakingChangeGates, compareVersions, requiresSolrRemoval, resolveUpgradePath } from '../src/domain/versions.js';
+import { compareVersions } from '../src/domain/versions.js';
+import { breakingChangeGates, requiresSolrRemoval, resolveUpgradePath } from '../src/domain/upgrade-paths.js';
 
 describe('resolveUpgradePath', () => {
   it('7.1.0 -> 26.2 encadena 3 hops con el primero REQUIRES_VALIDATION', () => {

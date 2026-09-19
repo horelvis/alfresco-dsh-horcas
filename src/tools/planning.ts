@@ -5,7 +5,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
-import { resolveUpgradePath } from '../domain/versions.js';
+import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { recommendStrategy, type StrategyInput } from '../domain/strategy.js';
 import { estimate, type EstimationInput } from '../domain/estimator.js';
 import { buildChecklist, renderChecklistMarkdown, type ChecklistInput } from '../domain/checklist.js';

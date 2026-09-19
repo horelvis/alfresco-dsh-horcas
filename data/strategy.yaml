@@ -1,0 +1,15 @@
+# Umbrales del selector de estrategia (DATOS, no codigo).
+# Editar aqui los cortes por perfil; el codigo solo aplica las reglas.
+
+schemaVersion: 1
+
+thresholds:
+  # Muchos documentos -> cuello en operaciones por fichero.
+  manyFiles: 1000000
+  # Pocos y muy grandes -> limitado por ancho de banda.
+  largeAverageBytes: 100000000
+  # Repos pequeno/heterogeneo.
+  smallFiles: 100000
+  smallBytes: 200000000000
+  # Reindex por lotes de ID vs estandar.
+  manyNodes: 1000000

@@ -80,7 +80,13 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
 
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.
+- `upgrade-paths.yaml`: **matriz de rutas de upgrade y gates** (datos, no código).
+- `estimation.yaml`: parámetros/umbrales del estimador.
+- `strategy.yaml`: umbrales del selector de estrategia.
 - `recommendations.yaml`, `project.schema.json`, `projects/example.yaml`.
+
+> El conocimiento vive en **datos y skills**, no hardcodeado. Cambiar la matriz de upgrade o los
+> umbrales no requiere tocar código: se edita el YAML.
 
 ## Desarrollo
 ```sh

@@ -4,7 +4,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { availableVersions, loadSchemaReference } from '../domain/schema-reference.js';
 import { compare, describe, liveCatalog } from '../domain/schema-integrity.js';
 import { forCodes } from '../domain/recommendations.js';
-import { breakingChangeGates, resolveUpgradePath } from '../domain/versions.js';
+import { breakingChangeGates, resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { dataDir } from '../domain/data-dir.js';
 import { connectSource, queryRows, REPLICATION_SQL, sourceDbConfigFromEnv } from '../infra/pg.js';
 

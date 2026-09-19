@@ -11,7 +11,7 @@ import AjvModule, { type ErrorObject } from 'ajv/dist/2020.js';
 import addFormatsModule from 'ajv-formats';
 import yaml from 'js-yaml';
 import { dataDir } from './data-dir.js';
-import { resolveUpgradePath } from './versions.js';
+import { resolveUpgradePath } from './upgrade-paths.js';
 import { assessSource, discoverRest } from './assessment.js';
 import type { ProjectConfig } from './project-config.js';
 

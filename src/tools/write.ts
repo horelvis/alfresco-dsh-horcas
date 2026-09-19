@@ -8,7 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
-import { resolveUpgradePath } from '../domain/versions.js';
+import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { loadSchemaReference } from '../domain/schema-reference.js';
 import { dataDir } from '../domain/data-dir.js';
 import { compareFingerprints, hasBlockingDrift, latestRehearsal, stateDir } from '../domain/experience.js';

@@ -6,7 +6,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
 import { assessSource } from '../domain/assessment.js';
 import { buildChecklist } from '../domain/checklist.js';
-import { resolveUpgradePath } from '../domain/versions.js';
+import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { openAiCompatibleClient, review, type ReviewStage } from '../domain/reviewer.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];

@@ -1,0 +1,75 @@
+# Matriz de rutas de upgrade de Alfresco Content Services (DATOS, no codigo).
+# Fuente: documentacion oficial de rutas de upgrade. El codigo solo evalua estas reglas.
+# Editar aqui cuando el fabricante cambie la matriz; no requiere tocar codigo.
+
+schemaVersion: 1
+
+# Notas reutilizables (se referencian por id en las rutas).
+notes:
+  java21: "Java 21 + Tomcat 11"
+  activemq: "ActiveMQ con autenticacion"
+  eventsV1: "eventos v1 deshabilitados"
+  solrOff: "Solr no soportado: regenerar con Search Enterprise"
+  validateWithVendor: "Upgrade < 7.2 / salto legacy: contactar con soporte del fabricante"
+  noMultiTenancy: "Sin multi-tenancy desde 6.x"
+  unsupported: "Ruta no soportada: validar con el fabricante"
+
+# Reglas en orden; la PRIMERA cuyo `when` casa define la ruta.
+# `when.fromAtLeast` / `fromMajor*` evaluan la version ORIGEN.
+# En `hops`: `$FROM` y `$TO` se sustituyen; `classBelow` degrada la clase si el origen es anterior.
+rules:
+  - id: from-25.3
+    when: { fromAtLeast: "25.3" }
+    hops:
+      - { from: "$FROM", to: "$TO", class: SUPPORTED }
+
+  - id: from-7.4
+    when: { fromAtLeast: "7.4" }
+    hops:
+      - { from: "$FROM", to: "25.3", class: SUPPORTED, notes: [java21, activemq, eventsV1] }
+      - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
+
+  - id: from-7.x
+    when: { fromMajor: 7 }
+    hops:
+      - from: "$FROM"
+        to: "7.4"
+        class: SUPPORTED
+        classBelow: { version: "7.2", class: REQUIRES_VALIDATION, notes: [validateWithVendor] }
+      - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21, activemq, eventsV1] }
+      - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
+
+  - id: from-6.x
+    when: { fromMajor: 6 }
+    hops:
+      - { from: "$FROM", to: "7.4", class: REQUIRES_VALIDATION, notes: [validateWithVendor] }
+      - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21] }
+      - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
+
+  - id: from-5.x
+    when: { fromMajor: 5 }
+    hops:
+      - { from: "$FROM", to: "6.2", class: REQUIRES_VALIDATION, notes: [noMultiTenancy] }
+      - { from: "6.2", to: "7.4", class: REQUIRES_VALIDATION, notes: [validateWithVendor] }
+      - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21] }
+      - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
+
+  - id: unsupported
+    when: { always: true }
+    hops:
+      - { from: "$FROM", to: "$TO", class: UNSUPPORTED, notes: [unsupported] }
+
+# Gates de breaking changes por version destino. `atLeast` evalua la version DESTINO.
+# Si ninguna regla casa, se usa `gatesFallback`.
+gates:
+  - when: { atLeast: "25.3" }
+    text: "Java 21/Tomcat 10+"
+  - when: { atLeast: "26" }
+    text: "ActiveMQ 6.x con autenticacion, eventos v2"
+  - when: { atLeast: "26", edition: "EE" }
+    text: "Solr no soportado (Enterprise)"
+gatesFallback: "revisar breaking changes de $TO"
+
+# Requiere desmantelar Solr en el destino.
+solrRemoval:
+  when: { atLeast: "26", edition: "EE" }

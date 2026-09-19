@@ -1,0 +1,33 @@
+# Parametros del estimador de ventana de migracion (DATOS, no codigo).
+# Editar aqui los supuestos/umbrales; el codigo solo aplica las formulas.
+
+schemaVersion: 1
+
+# Throughput por defecto (se pueden sobreescribir por env o benchmark medido).
+throughput:
+  contentCopyMbps: 150
+  dbRestoreMbps: 80
+  reindexNodesPerSec: 400
+
+# Factores de las formulas (docs/design/06).
+factors:
+  dbRestoreFactor: 1.8
+  preStagingOverheadHours: 1.5
+  assessmentMinutes: 30
+  schemaBaseHoursPerHop: 0.25
+  schemaNodeFactor: 0.5
+  schemaAuditFactor: 0.3
+  cutoverBaseHours: 0.5
+  cutoverHoursPerHop: 0.5
+  cutoverSafetyFactor: 1.2
+  postCutoverContentFactor: 0.3
+
+# Umbrales de riesgo / reglas de juicio.
+thresholds:
+  auditHigh: 100000000
+
+# Palancas de mitigacion (se devuelven como hechos).
+levers:
+  - PURGE_AUDIT
+  - PARALLELISM
+  - SHARED_CONTENT_STORE
