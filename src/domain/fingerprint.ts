@@ -27,7 +27,3 @@ export async function gatherSourceFingerprint(version: string, dataDir: string):
     await client.end();
   }
 }
-
-export function fingerprintValidated(fingerprint: SourceFingerprint): boolean {
-  return fingerprint.schemaHealthy && fingerprint.schemaMismatches === 0 && fingerprint.replicationObjects === 0;
-}

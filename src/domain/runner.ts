@@ -9,6 +9,10 @@ export interface RunReport {
   runId: string;
   results: StepOutcome[];
   ok: boolean;
+  /** Primer paso fallido (punto de reanudacion tras restaurar). */
+  failedStep?: string;
+  /** Paso desde el que reanudar (el fallido; los anteriores ya estan OK en checkpoints). */
+  resumeFrom?: string;
 }
 
 export interface RunnerOptions {
@@ -34,7 +38,7 @@ export async function runSteps(
     const definition = stepById(id);
     if (!definition) {
       results.push({ step: id, ok: false, detail: `Paso desconocido: ${id}` });
-      return { runId: ctx.runId, results, ok: false };
+      return { runId: ctx.runId, results, ok: false, failedStep: id, resumeFrom: id };
     }
     if (options.resume && done.get(id)?.status === 'OK') {
       results.push({ step: id, ok: true, detail: 'reanudado desde checkpoint', skipped: true });
@@ -63,7 +67,7 @@ export async function runSteps(
     });
     results.push(outcome);
     if (!outcome.ok) {
-      return { runId: ctx.runId, results, ok: false };
+      return { runId: ctx.runId, results, ok: false, failedStep: id, resumeFrom: id };
     }
   }
   return { runId: ctx.runId, results, ok: true };

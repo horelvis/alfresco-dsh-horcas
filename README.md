@@ -34,16 +34,19 @@ overrides `MIGRATOR_DB_DUMP_CMD`/`RESTORE_CMD`/`REINDEX_CMD`/`MIGRATOR_DST_PROVI
 
 ## Flujo ensayo → producción
 Una migración nunca se ejecuta directo en PROD: primero se ensaya en un **clon de producción o TEST**.
+El ensayo es una **campaña con varios intentos**: ejecutas en PRE, falla un paso, restauras y **reanudas
+desde ese punto** (`resumeFrom`); cada intento queda registrado.
 
-1. `stage: clone|test` → ejecutar la migración de prueba y `migrator_rehearsal_record` (guarda el
-   *fingerprint* del origen: versión, esquema PK/UNIQUE, replicación, nodos, tamaño de BD).
-2. `stage: prod` → `migrator_target --execute` comprueba `migrator_environment_parity`:
+1. `stage: clone|test` → ejecutar los pasos (`migrator_run_steps`) y registrar cada intento con
+   `migrator_rehearsal_record` (outcome `ok|failed|aborted`, paso fallido y punto de reanudación).
+   La campaña guarda el *fingerprint* del origen: versión, esquema PK/UNIQUE, replicación, nodos, tamaño.
+2. `stage: prod` → `migrator_target --execute` / `migrator_run_steps` comprueban `migrator_environment_parity`:
    - sin ensayo validado → **bloquea**;
    - drift `BLOCKER` (versión distinta, esquema con defecto, CDC activo) → **bloquea**;
    - drift `WARN` (nodos/tamaño > 10%) → avisa.
 
-La experiencia se guarda en `.migrator/experience.jsonl` (`MIGRATOR_STATE`), estructurada y consultable
-en cualquier sesión futura; complementa la memoria conversacional del arnés.
+La experiencia se guarda en `.migrator/experience.jsonl` (una campaña por proyecto+stage, con su historial
+de intentos); complementa la memoria conversacional del arnés y permite reanudar sin repetir lo ya hecho.
 
 ## Seguridad (encapsulada en el arnés)
 - `tools/pre-execute`: allow para read-only, `ask` para escritura, deny para tools desconocidas del plugin.

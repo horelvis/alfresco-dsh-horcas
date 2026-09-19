@@ -8,7 +8,9 @@ import { loadProject } from '../domain/project-config.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
 import { loadCheckpoints } from '../domain/checkpoints.js';
-import { stateDir, latestRehearsal } from '../domain/experience.js';
+import { campaignId, recordAttempt, resumePoint, stateDir, latestRehearsal, type AttemptOutcome, type ExperienceAttempt } from '../domain/experience.js';
+import { gatherSourceFingerprint } from '../domain/fingerprint.js';
+import { dataDir } from '../domain/data-dir.js';
 import type { HostRef } from '../infra/exec.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -63,13 +65,14 @@ export function registerExecutionTools(ctx: Context): void {
           properties: {
             runId: { type: 'string' },
             ok: { type: 'boolean' },
+            resumeFrom: { type: 'string' },
             results: { type: 'array', items: { type: 'object', additionalProperties: true } },
           },
         },
         render: (_args, value) => {
-          const v = value as { runId: string; ok: boolean; results: Array<{ step: string; ok: boolean; skipped?: boolean; detail: string }> };
+          const v = value as { runId: string; ok: boolean; resumeFrom?: string; results: Array<{ step: string; ok: boolean; skipped?: boolean; detail: string }> };
           const lines = v.results.map((r) => `${r.ok ? (r.skipped ? '~' : 'x') : '!'} ${r.step}: ${r.detail}`);
-          return text(`run=${v.runId} ok=${v.ok}\n${lines.join('\n')}`);
+          return text(`run=${v.runId} ok=${v.ok}${v.resumeFrom ? ` · reanudar en ${v.resumeFrom}` : ''}\n${lines.join('\n')}`);
         },
       },
       async execute(args) {
@@ -88,7 +91,33 @@ export function registerExecutionTools(ctx: Context): void {
           args.steps,
           { resume: args.resume === true, dryRun: !execute },
         );
-        return { runId: report.runId, ok: report.ok, results: report.results.map((r) => ({ ...r })) };
+
+        // Registra el intento en la campana de experiencia (salvo dry-run) para poder restaurar y reanudar.
+        if (execute && project.stage !== 'prod') {
+          try {
+            const fingerprint = await gatherSourceFingerprint(project.source.version, dataDir());
+            const attempt: ExperienceAttempt = {
+              id: runId,
+              at: new Date().toISOString(),
+              outcome: (report.ok ? 'ok' : 'failed') as AttemptOutcome,
+              failedStep: report.failedStep,
+              resumeFrom: report.resumeFrom,
+              steps: report.results.map((r) => ({ id: r.step, ok: r.ok, durationMs: 0, detail: r.detail })),
+              findings: [],
+            };
+            await recordAttempt(state, {
+              project: project.project,
+              stage: project.stage,
+              sourceVersion: project.source.version,
+              targetVersion: project.target.version,
+              fingerprint,
+              attempt,
+            });
+          } catch {
+            // La experiencia no debe romper la ejecucion.
+          }
+        }
+        return { runId: report.runId, ok: report.ok, resumeFrom: report.resumeFrom ?? '', results: report.results.map((r) => ({ ...r })) };
       },
     }),
   );

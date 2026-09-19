@@ -3,12 +3,14 @@ import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  attemptSummary,
+  campaignId,
   compareFingerprints,
   hasBlockingDrift,
   latestRehearsal,
   loadExperiences,
-  recordExperience,
-  type ExperienceRecord,
+  recordAttempt,
+  resumePoint,
   type SourceFingerprint,
 } from '../src/domain/experience.js';
 
@@ -25,32 +27,58 @@ function fp(over: Partial<SourceFingerprint> = {}): SourceFingerprint {
   };
 }
 
-function rec(over: Partial<ExperienceRecord> = {}): ExperienceRecord {
-  return {
-    id: 'p-test-1',
-    createdAt: '2026-09-19T10:00:00Z',
-    project: 'p',
-    stage: 'test',
-    sourceVersion: '7.1.0',
-    targetVersion: '26.2',
-    validated: true,
-    fingerprint: fp(),
-    steps: [],
-    findings: [],
-    ...over,
-  };
-}
-
-describe('experience store', () => {
-  it('registra, carga y devuelve el ultimo ensayo validado', async () => {
+describe('campana de experiencia (multiples intentos)', () => {
+  it('acumula intentos en la misma campana y permite reanudar desde el fallo', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'exp-'));
-    await recordExperience(dir, rec({ id: 'a', createdAt: '2026-09-19T09:00:00Z' }));
-    await recordExperience(dir, rec({ id: 'b', createdAt: '2026-09-19T11:00:00Z', stage: 'clone' }));
-    await recordExperience(dir, rec({ id: 'prod', createdAt: '2026-09-19T12:00:00Z', stage: 'prod' }));
 
-    expect(await loadExperiences(dir, 'p')).toHaveLength(3);
-    const latest = await latestRehearsal(dir, 'p');
-    expect(latest?.id).toBe('b'); // el prod no cuenta como ensayo
+    // Intento 1: falla en restore.
+    await recordAttempt(dir, {
+      project: 'p',
+      stage: 'test',
+      sourceVersion: '7.1.0',
+      targetVersion: '26.2',
+      fingerprint: fp(),
+      attempt: { id: 'run1', at: '2026-09-19T10:00:00Z', outcome: 'failed', failedStep: 'restore-target-db', resumeFrom: 'restore-target-db', steps: [{ id: 'copy-content', ok: true, durationMs: 10 }], findings: [] },
+    });
+    // Intento 2: reanuda y completa.
+    const record = await recordAttempt(dir, {
+      project: 'p',
+      stage: 'test',
+      sourceVersion: '7.1.0',
+      targetVersion: '26.2',
+      fingerprint: fp(),
+      attempt: { id: 'run2', at: '2026-09-19T11:00:00Z', outcome: 'ok', steps: [{ id: 'restore-target-db', ok: true, durationMs: 20 }], findings: [] },
+    });
+
+    expect(record.id).toBe(campaignId('p', 'test'));
+    expect(record.attempts).toHaveLength(2);
+    expect(record.validated).toBe(true);
+    expect(attemptSummary(record)).toContain('fallo en restore-target-db');
+    expect(await loadExperiences(dir, 'p')).toHaveLength(1); // una campana, no dos
+  });
+
+  it('resumePoint apunta al ultimo intento fallido', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'exp-'));
+    await recordAttempt(dir, {
+      project: 'p',
+      stage: 'test',
+      sourceVersion: '7.1.0',
+      targetVersion: '26.2',
+      fingerprint: fp(),
+      attempt: { id: 'r1', at: '2026-09-19T10:00:00Z', outcome: 'failed', failedStep: 'reindex', resumeFrom: 'reindex', steps: [], findings: [] },
+    });
+    const record = (await loadExperiences(dir, 'p'))[0];
+    expect(resumePoint(record)).toBe('reindex');
+  });
+
+  it('el ultimo ensayo validado se devuelve aunque haya intentos fallidos previos', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'exp-'));
+    await recordAttempt(dir, { project: 'p', stage: 'test', sourceVersion: '7.1.0', targetVersion: '26.2', fingerprint: fp(), attempt: { id: 'r1', at: '2026-09-19T10:00:00Z', outcome: 'failed', failedStep: 'x', steps: [], findings: [] } });
+    await recordAttempt(dir, { project: 'p', stage: 'clone', sourceVersion: '7.1.0', targetVersion: '26.2', fingerprint: fp(), attempt: { id: 'r2', at: '2026-09-19T11:00:00Z', outcome: 'ok', steps: [], findings: [] } });
+    await recordAttempt(dir, { project: 'p', stage: 'prod', sourceVersion: '7.1.0', targetVersion: '26.2', fingerprint: fp(), attempt: { id: 'r3', at: '2026-09-19T12:00:00Z', outcome: 'ok', steps: [], findings: [] } });
+
+    const rehearsal = await latestRehearsal(dir, 'p');
+    expect(rehearsal?.stage).toBe('clone');
   });
 });
 
@@ -66,10 +94,7 @@ describe('compareFingerprints (drift ensayo -> prod)', () => {
   });
 
   it('CDC activo es BLOCKER', () => {
-    expect(compareFingerprints(fp(), fp({ replicationObjects: 3 }))[0]).toMatchObject({
-      kind: 'REPLICATION',
-      severity: 'BLOCKER',
-    });
+    expect(compareFingerprints(fp(), fp({ replicationObjects: 3 }))[0]).toMatchObject({ kind: 'REPLICATION', severity: 'BLOCKER' });
   });
 
   it('version distinta es BLOCKER', () => {
