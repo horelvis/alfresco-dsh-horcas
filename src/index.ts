@@ -18,6 +18,7 @@ import { registerCoherenceTools } from './tools/coherence.js';
 import { registerPlanningTools } from './tools/planning.js';
 import { registerBackupTools } from './tools/backup.js';
 import { registerAssessmentTools } from './tools/assessment.js';
+import { registerReindexTools } from './tools/reindex.js';
 
 export const name = 'dsh-plugin-alfresco-migrator';
 export const inject = ['tools', 'systemPrompt', 'skills'];
@@ -32,6 +33,7 @@ export function apply(ctx: Context): void {
   registerAssessmentTools(ctx);
   registerPlanningTools(ctx);
   registerBackupTools(ctx);
+  registerReindexTools(ctx);
   registerExperienceTools(ctx);
   registerExecutionTools(ctx);
   registerWriteTools(ctx);
