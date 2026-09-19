@@ -61,6 +61,16 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
   Sin answerer el arnés falla en cerrado. Verificado end-to-end: `rejected` con allowlist sin la tool y
   `allowed-once` + ejecución real del paso con la tool permitida.
 
+  **Solo concesiones one-shot.** El vocabulario del arnés es cerrado (`allowed-once | rejected |
+  cancelled | unavailable`) y `allowed-once` es la única concesión; no existe "permitir siempre". El
+  plugin lo garantiza (`assertOneShot`) y audita cada decisión en `.migrator/approvals.jsonl`.
+  La durabilidad por tool vive en la config (`allowlist`/`allow`), no en un grant de sesión.
+
+  **Sin autorizaciones heredadas en cadena.** El arnés propaga la política a los subagentes
+  (`approval/policy` con `source: 'delegation'`); como el answerer es global, un subagente heredaría la
+  aprobación. Por eso el plugin **rechaza siempre** las peticiones de agentes delegados
+  (`parentAgent`/`meta.origin='subagent'`/`delegationDepth>0`).
+
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.
 - `recommendations.yaml`, `project.schema.json`, `projects/example.yaml`.

@@ -14,9 +14,20 @@
  * es por nombre; la granularidad por argumentos la impone el guard del plugin.
  */
 import { createInterface } from 'node:readline/promises';
+import { appendFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
 
 export type ApprovalMode = 'deny' | 'allow' | 'interactive' | 'allowlist';
 export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'unavailable';
+
+/** El arnes solo admite concesiones one-shot; este guard lo hace explicito y testable. */
+export const PERSISTENT_GRANTS: readonly string[] = ['always', 'allow-always', 'remember', 'session', 'persist'];
+export function assertOneShot(outcome: ApprovalOutcome): ApprovalOutcome {
+  if ((PERSISTENT_GRANTS as readonly string[]).includes(outcome)) {
+    throw new Error(`El arnes no admite concesiones persistentes: ${outcome}`);
+  }
+  return outcome;
+}
 
 export interface ApprovalOptions {
   mode: ApprovalMode;
@@ -26,6 +37,25 @@ export interface ApprovalOptions {
 export interface ApprovalRequest {
   toolName: string;
   reason?: string;
+  agent?: ApprovalAgent;
+}
+
+/** Identidad minima del agente (dsh Agent): permite rechazar aprobaciones heredadas por subagentes. */
+export interface ApprovalAgent {
+  parentAgent?: ApprovalAgent;
+  meta?: { origin?: string; delegationDepth?: number };
+}
+
+/**
+ * `true` si el agente es un subagente (delegado). El arnes propaga la politica de aprobacion a los
+ * hijos (`approval/policy` con `source: 'delegation'`), de modo que un answerer global responderia
+ * tambien por ellos: eso es exactamente una "autorizacion heredada en cadena". La bloqueamos.
+ */
+export function isDelegated(agent: ApprovalAgent | undefined): boolean {
+  if (!agent) return false;
+  if (agent.parentAgent) return true;
+  if (agent.meta?.origin === 'subagent') return true;
+  return (agent.meta?.delegationDepth ?? 0) > 0;
 }
 
 export function optionsFromEnv(env: NodeJS.ProcessEnv = process.env): ApprovalOptions {
@@ -78,15 +108,60 @@ export interface ApprovalContext {
   on(event: 'approval/request', handler: (request: ApprovalRequest, next: () => Promise<ApprovalOutcome>) => Promise<ApprovalOutcome | undefined>): unknown;
 }
 
+/** Registro durable de cada decision de aprobacion (auditoria; el arnes no guarda grants). */
+export interface ApprovalAuditEntry {
+  at: string;
+  toolName: string;
+  reason?: string;
+  mode: ApprovalMode;
+  outcome: ApprovalOutcome;
+}
+
+export function approvalAuditFile(state: string): string {
+  return path.join(state, 'approvals.jsonl');
+}
+
+async function audit(entry: ApprovalAuditEntry): Promise<void> {
+  const state = process.env.MIGRATOR_STATE ?? '.migrator';
+  try {
+    await mkdir(state, { recursive: true });
+    await appendFile(approvalAuditFile(state), JSON.stringify(entry) + '\n', 'utf8');
+  } catch {
+    // La auditoria nunca debe romper la aprobacion.
+  }
+}
+
+/**
+ * El arnes NO admite un outcome persistente ("always"/"remember"): `allowed-once` es la unica
+ * concesion y aplica solo a la accion pedida. La durabilidad por tool vive en nuestro answerer
+ * (`MIGRATOR_APPROVAL=allowlist|allow`), no en un grant de sesion. Aqui ademas auditamos cada decision.
+ *
+ * IMPORTANTE: el answerer es global, asi que SOLO decide sobre nuestras tools (`migrator_*`); para el
+ * resto delega en `next()` (answerer de la UI en `web`, o fail-closed del arnes). Asi no bloqueamos
+ * `bash`/`write` de subagentes ni pisamos la aprobacion interactiva del perfil web.
+ */
 export function installApproval(ctx: ApprovalContext, options: ApprovalOptions = optionsFromEnv()): void {
   ctx.on('approval/request', async (request, next) => {
+    // No es una tool del migrador: que decida el arnes/la UI.
+    if (!request.toolName.startsWith('migrator_')) {
+      return next();
+    }
+    // Nunca autorizar por herencia: las escrituras del migrador delegadas a subagentes se rechazan.
+    if (isDelegated(request.agent)) {
+      await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome: 'rejected' });
+      return 'rejected';
+    }
+    let outcome: ApprovalOutcome;
     if (options.mode === 'interactive') {
       if (!process.stdin.isTTY) {
-        return 'rejected';
+        outcome = 'rejected';
+      } else {
+        outcome = (await prompt(request)) ? 'allowed-once' : 'rejected';
       }
-      return (await prompt(request)) ? 'allowed-once' : 'rejected';
+    } else {
+      outcome = decideApproval(request, options) ?? (await next());
     }
-    const outcome = decideApproval(request, options);
-    return outcome ?? next();
+    await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome });
+    return assertOneShot(outcome);
   });
 }
