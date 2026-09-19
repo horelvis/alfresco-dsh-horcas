@@ -11,6 +11,8 @@ import { loadProject } from '../domain/project-config.js';
 import { resolveUpgradePath } from '../domain/versions.js';
 import { loadSchemaReference } from '../domain/schema-reference.js';
 import { dataDir } from '../domain/data-dir.js';
+import { compareFingerprints, hasBlockingDrift, latestRehearsal, stateDir } from '../domain/experience.js';
+import { gatherSourceFingerprint } from '../domain/fingerprint.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
@@ -57,6 +59,18 @@ export function registerWriteTools(ctx: Context): void {
         const hops = resolveUpgradePath(config.source.version, config.target.version);
         const reference = await loadSchemaReference(config.source.version, dataDir());
         if (args.execute === true) {
+          if (config.stage === 'prod') {
+            const rehearsal = await latestRehearsal(stateDir(), config.project);
+            if (!rehearsal || !rehearsal.validated) {
+              throw new Error('PROD exige una migracion de prueba validada (clone/TEST) registrada antes de ejecutar');
+            }
+            const current = await gatherSourceFingerprint(config.source.version, dataDir());
+            const drift = compareFingerprints(rehearsal.fingerprint, current);
+            if (hasBlockingDrift(drift)) {
+              const blockers = drift.filter((d) => d.severity === 'BLOCKER').map((d) => `${d.kind}: ${d.detail}`);
+              throw new Error('PROD bloqueado por drift respecto al ensayo: ' + blockers.join('; '));
+            }
+          }
           throw new Error('migrator_target: la ejecucion del pipeline de destino aun no esta portada (fase 2)');
         }
         return {

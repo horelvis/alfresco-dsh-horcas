@@ -2,6 +2,8 @@
 # Origen: ACS 7.1.0 Community, Solr 6, PostgreSQL, content store FS.
 # El migrador NO escribe en el origen (modo plan sin --execute).
 project: gadex-7.1.0
+# clone | test | prod. PROD exige un ensayo validado (clone/TEST) sin drift de bloqueo.
+stage: test
 
 access:
   mode: ssh                       # enrutado: el ORIGEN (via jdbc) sigue local; el DESTINO va por SSH

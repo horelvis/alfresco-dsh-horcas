@@ -14,6 +14,10 @@ export const READ_ONLY_TOOLS = [
   'migrator_schema_check',
   'migrator_recommendations',
   'migrator_status',
+  // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
+  'migrator_rehearsal_record',
+  'migrator_experience_latest',
+  'migrator_environment_parity',
 ] as const;
 
 // Tools de escritura: actuan SOLO sobre el destino; requieren aprobacion explicita.

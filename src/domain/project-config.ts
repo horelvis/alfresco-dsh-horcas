@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import yaml from 'js-yaml';
 import { dataDir } from './data-dir.js';
+import type { Stage } from './experience.js';
 
 export interface ProjectDatabase {
   engine?: string;
@@ -14,6 +15,8 @@ export interface ProjectDatabase {
 
 export interface ProjectConfig {
   project: string;
+  /** clone | test | prod. PROD exige un ensayo validado (flujo ensayo->produccion). */
+  stage: Stage;
   source: {
     baseUrl?: string;
     edition?: string;
@@ -36,8 +39,10 @@ export function parseProjectYaml(text: string): ProjectConfig {
   const source = (raw.source ?? {}) as Record<string, unknown>;
   const target = (raw.target ?? {}) as Record<string, unknown>;
   const version = String(source.version ?? '');
+  const stage = String(raw.stage ?? 'test').toLowerCase();
   return {
     project: String(raw.project ?? 'unnamed'),
+    stage: (['clone', 'test', 'prod'].includes(stage) ? stage : 'test') as Stage,
     source: {
       baseUrl: source.baseUrl ? String(source.baseUrl) : undefined,
       edition: source.edition ? String(source.edition) : undefined,

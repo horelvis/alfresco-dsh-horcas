@@ -15,9 +15,25 @@ Read-only (permitidas por defecto):
 - `migrator_schema_versions` — versiones de referencia de esquema disponibles.
 - `migrator_schema_check` — PK/UNIQUE del PostgreSQL del origen vs la referencia de su versión.
 - `migrator_recommendations` — recomendaciones oficiales para códigos de hallazgo.
+- `migrator_rehearsal_record` — registra la experiencia de una migración de prueba (clone/TEST).
+- `migrator_experience_latest` — consulta el último ensayo registrado.
+- `migrator_environment_parity` — drift del origen actual respecto al ensayo (BLOCKER impide PROD).
 
 Escritura (marcadas `ask`; requieren aprobación humana; solo destino):
-- `migrator_target` — prepara el destino. Hoy valida y devuelve el plan (dry-run); la ejecución se porta por fases.
+- `migrator_target` — prepara el destino. Con `execute=true` en `stage: prod` exige un ensayo validado y sin drift de bloqueo.
+
+## Flujo ensayo → producción
+Una migración nunca se ejecuta directo en PROD: primero se ensaya en un **clon de producción o TEST**.
+
+1. `stage: clone|test` → ejecutar la migración de prueba y `migrator_rehearsal_record` (guarda el
+   *fingerprint* del origen: versión, esquema PK/UNIQUE, replicación, nodos, tamaño de BD).
+2. `stage: prod` → `migrator_target --execute` comprueba `migrator_environment_parity`:
+   - sin ensayo validado → **bloquea**;
+   - drift `BLOCKER` (versión distinta, esquema con defecto, CDC activo) → **bloquea**;
+   - drift `WARN` (nodos/tamaño > 10%) → avisa.
+
+La experiencia se guarda en `.migrator/experience.jsonl` (`MIGRATOR_STATE`), estructurada y consultable
+en cualquier sesión futura; complementa la memoria conversacional del arnés.
 
 ## Seguridad (encapsulada en el arnés)
 - `tools/pre-execute`: allow para read-only, `ask` para escritura, deny para tools desconocidas del plugin.
