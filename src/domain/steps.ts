@@ -10,6 +10,7 @@
 import type { HostRef } from '../infra/exec.js';
 import { runShell, substitute, type ExecResult } from '../infra/exec.js';
 import type { ProjectConfig } from '../domain/project-config.js';
+import { planContentCopy } from './content-copy.js';
 
 export interface StepContext {
   project: ProjectConfig;
@@ -81,10 +82,10 @@ const backupSourceDb: StepDefinition = {
   },
 };
 
-/** `copy-content`: replica el content store del origen al destino (rsync/ssh). */
+/** `copy-content`: replica el content store del origen al destino (rsync/S3/Azure, con delta). */
 const copyContent: StepDefinition = {
   id: 'copy-content',
-  description: 'Copia el content store del origen al destino (rsync).',
+  description: 'Copia el content store del origen al destino (rsync/S3/Azure; delta opcional).',
   writes: true,
   async run(ctx, params) {
     const source = String(params.sourcePath ?? ctx.project.source.contentStore?.path ?? '');
@@ -99,7 +100,12 @@ const copyContent: StepDefinition = {
     if (override) {
       return requireResult('copy-content', await runShell(ctx.destination, substitute(override, { source, target })));
     }
-    return requireResult('copy-content', await runShell(ctx.destination, `rsync -a --info=stats2 "${source}" "${target}"`));
+    const plan = planContentCopy(
+      { type: 'FS', path: source },
+      { type: 'FS', path: target },
+      { delta: params.delta === true },
+    );
+    return requireResult('copy-content', await runShell(ctx.destination, plan.command));
   },
 };
 
