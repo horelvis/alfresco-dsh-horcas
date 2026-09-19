@@ -1,0 +1,44 @@
+{
+  "name": "dsh-plugin-alfresco-migrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DeepSeek Harness plugin: Alfresco Content Services migration agent (read-only tools + gated write tools, safety rules encapsulated in the harness).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "data"
+  ],
+  "scripts": {
+    "build": "tsdown src/index.ts --format esm --dts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0",
+    "js-yaml": "^4.1.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "tsdown": "^0.9.9",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.5"
+  }
+}

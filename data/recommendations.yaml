@@ -1,0 +1,150 @@
+# Recomendaciones respaldadas por documentacion oficial de Hyland/Alfresco.
+# Se emparejan por `code` con los hallazgos del agente (Finding.code). Sufijos:
+#   - code exacto (p. ej. COHERENCE_DANGLING)
+#   - prefijo STEP (fallos de paso genericos)
+#   - "*" (catch-all)
+recommendations:
+  - code: SCHEMA_INTEGRITY
+    title: "Esquema de BD sin PRIMARY KEY / unicidad (defecto de migracion previa)"
+    actions:
+      - "Confirmar en pg_constraint/pg_index que las 6 tablas (alf_node, alf_node_properties, alf_node_aspects, alf_content_url, alf_transaction, alf_acl_change_set) conservan PK y que alf_node tiene UNIQUE(store_id,uuid)."
+      - "Si faltan, recrearlas con la nomenclatura exacta de Schema-Reference-ALF.xml (el validador de Alfresco compara por nombre)."
+      - "Antes de recrear, deduplicar: en alf_node conservar mayor version (desempate por auditoria/transaction_id); cm:name por contraste con alf_child_assoc.child_node_name; NO usar ctid."
+      - "Revisar sys:lost_found y reubicar los nodos que perdieron asociacion padre."
+      - "NUNCA migrar con CDC/replicacion logica sobre tablas sin REPLICA IDENTITY; preferir D2_DUMP_RESTORE."
+    sources:
+      - title: "Hyland Docs - Apply optional performance database patch"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/26.1/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Apply-optional-performance-database-patch"
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: CDC_REPLICA_IDENTITY
+    title: "Replicacion logica (CDC) sin REPLICA IDENTITY"
+    actions:
+      - "Evitar CDC (D3) como estrategia: usar dump/restore (D2) o snapshot (D1)."
+      - "Si se usa CDC, exigir REPLICA IDENTITY FULL en las tablas alf_* y verificar en destino que no se insertan duplicados (UNIQUE store_id,uuid)."
+      - "Desmantelar publicaciones/suscripciones/slots de replicacion antes del corte y confirmarlo (0 filas en pg_publication/pg_subscription/pg_replication_slots)."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: COHERENCE_DANGLING
+    title: "Referencias colgantes (contenido ausente en el store)"
+    actions:
+      - "Localizar los content_url sin objeto en el content store y cruzarlos con el inventario de backup."
+      - "Restaurar los binarios ausentes desde backup sobre una COPIA (el origen no se modifica)."
+      - "Si no hay backup, documentar la perdida y decidir en la copia si se eliminan las referencias afectadas."
+      - "Repetir la coherencia en modo FULL hasta que el verdict deje de ser FAIL."
+    sources:
+      - title: "Hyland Docs - Clean up orphaned content (purge)"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/23.4/Alfresco-Content-Services/Administer/Content-stores/Manage-content-stores/Clean-up-orphaned-content-purge"
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: COHERENCE_ORPHANS
+    title: "Objetos huerfanos en el content store"
+    actions:
+      - "Ejecutar el content store cleaner (bean contentStoreCleaner) para mover/purgar huerfanos."
+      - "Revisar el Deleted content store y la retencion (protectDays) antes de purgar."
+      - "Excluir artefactos del sistema operativo (p. ej. .DS_Store) al medir huerfanos."
+    sources:
+      - title: "Hyland Docs - Manage content stores (contentStoreCleaner / Deleted content store)"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.3/Alfresco-Content-Services-Community-Edition/Administer/Content-stores/Manage-content-stores"
+      - title: "Hyland Docs - Clean up orphaned content (purge)"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/23.4/Alfresco-Content-Services/Administer/Content-stores/Manage-content-stores/Clean-up-orphaned-content-purge"
+
+  - code: COHERENCE_SIZE_MISMATCH
+    title: "Desajuste de tamano DB vs content store"
+    actions:
+      - "Identificar los objetos con content_size distinto y validar su integridad (checksum)."
+      - "Recopiar solo los objetos afectados desde el origen hacia la copia."
+    sources:
+      - title: "Hyland Docs - Manage content stores"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.3/Alfresco-Content-Services-Community-Edition/Administer/Content-stores/Manage-content-stores"
+
+  - code: LOW_CONFIDENCE
+    title: "Estimacion con confianza baja (inventario incompleto)"
+    actions:
+      - "Completar el inventario por JDBC read-only (nodos, auditoria, versiones, tamano de BD)."
+      - "Aplicar el patch de rendimiento de BD en implementaciones grandes (opcional, manual, post-upgrade)."
+      - "Recalibrar con un paso benchmark de throughput real del entorno."
+    sources:
+      - title: "Hyland Docs - Apply optional performance database patch"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/26.1/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Apply-optional-performance-database-patch"
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: COHERENCE
+    title: "No se pudo evaluar la coherencia (conectividad/BD)"
+    actions:
+      - "Verificar acceso read-only a la BD y al content store desde el host de operacion."
+      - "Si el origen esta en version antigua, actualizar primero Alfresco Search Services a una version soportada."
+    sources:
+      - title: "Hyland Docs - Upgrade paths (upgrade Search Services before the repository)"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: STEP
+    title: "Fallo en un paso del pipeline"
+    actions:
+      - "Revisar el mensaje del paso en report.json y reintentar (el pipeline es idempotente y reanudable)."
+      - "Confirmar conectividad (REST/JDBC/store) y credenciales del origen."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: "*"
+    title: "Hallazgo no clasificado"
+    actions:
+      - "Revisar el informe por paso y la documentacion oficial de upgrade de ACS."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: LOG_MODULE_VERSION
+    title: "Conflicto de version de modulo (AMP/JAR)"
+    actions:
+      - "Alinear la version del modulo desplegado con la registrada en el repositorio, o desinstalar la anterior con el Module Management Tool."
+      - "Revisar el inventario de modulos y validar compatibilidad con 26.x (Extension Inspector)."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: LOG_SCHEMA_VALIDATION
+    title: "Validacion de schema pendiente (patch de BD)"
+    actions:
+      - "Arrancar ACS para que aplique los schema patches o aplicar el patch de rendimiento de BD si procede (manual, post-upgrade)."
+    sources:
+      - title: "Hyland Docs - Apply optional performance database patch"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/26.1/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Apply-optional-performance-database-patch"
+
+  - code: LOG_OOM
+    title: "Memoria insuficiente (heap)"
+    actions:
+      - "Ajustar -Xms/-Xmx o los limites del contenedor; revisar reindex/transform en paralelo."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: LOG_SEARCH
+    title: "Busqueda no accesible (Solr/Search Enterprise)"
+    actions:
+      - "Verificar el servicio de busqueda; en 26 Enterprise migrar a Search Enterprise (Solr no soportado)."
+    sources:
+      - title: "Hyland Docs - Alfresco Re-indexing app"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Search-Enterprise/4.1/Alfresco-Search-Enterprise/Install/Install-using-JAR-files/Alfresco-Re-indexing-app"
+
+  - code: LOG_ACTIVEMQ
+    title: "ActiveMQ: autenticacion/credenciales"
+    actions:
+      - "Configurar ACTIVEMQ_ADMIN_LOGIN/PASSWORD y SPRING_ACTIVEMQ_* (26.1+ exige autenticacion)."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"
+
+  - code: LOG_DB
+    title: "BD no accesible desde el migrador"
+    actions:
+      - "Verificar host/puerto/credenciales y acceso read-only; usar MIGRATOR_SRC_DB_URL o un tunel SSH."
+    sources:
+      - title: "Hyland Docs - Upgrade paths"
+        url: "https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/25.2/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths"

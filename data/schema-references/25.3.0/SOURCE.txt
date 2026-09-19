@@ -1,0 +1,8 @@
+version: 25.3.0
+repo: https://github.com/Alfresco/alfresco-community-repo
+ref: 25.3.0.81
+fetched: 2026-09-18T18:47:42Z
+license: LGPL-3.0
+files:
+  - 2e2abee77753aaf46795d913a0a416f4406d39ea797afa5067cec0125daa03ee  Schema-Reference-ALF.xml
+  - 3df35558d4ea3a6b143a14c525f8f9fe5a7c1c8240570389216bf5cfaf2b31a4  Schema-Reference-ACT.xml

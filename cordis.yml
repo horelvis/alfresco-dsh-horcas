@@ -1,0 +1,9 @@
+# Patch de desarrollo: monta el plugin del migrador en dsh sin publicarlo.
+#
+#   pnpm install
+#   pnpm build
+#   dsh --profile web --patch ./cordis.yml
+#
+# En produccion: dsh plugin --profile web add <pkg> (paquete npm o ruta local).
+- id: alfresco-migrator
+  name: 'dsh-plugin-alfresco-migrator'

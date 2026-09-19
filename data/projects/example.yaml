@@ -1,0 +1,62 @@
+# Analisis read-only del Alfresco actual (stack local gadex-alfresco-docker-git).
+# Origen: ACS 7.1.0 Community, Solr 6, PostgreSQL, content store FS.
+# El migrador NO escribe en el origen (modo plan sin --execute).
+project: gadex-7.1.0
+
+access:
+  mode: ssh                       # enrutado: el ORIGEN (via jdbc) sigue local; el DESTINO va por SSH
+  hosts:
+    dst-app:
+      host: 192.168.100.51
+      port: 22
+      user: horelvis              # usuario SSH real de la maquina destino
+      auth: { type: key, keyFile: ~/.ssh/migrator_dst }   # clave dedicada del migrador (sin passphrase)
+
+source:
+  baseUrl: http://localhost/alfresco
+  edition: CE
+  version: "7.1.0"
+  auth: builtin
+  database:
+    engine: postgresql
+    host: localhost
+    port: 5432
+    name: alfresco
+    user: alfresco
+  contentStore:
+    type: FS
+    path: /Users/horelvis/git/gadex-alfresco-docker-git/data/alf-repo-data/contentstore
+    via: local
+  search:
+    engine: solr
+    version: "2.0"
+
+target:
+  version: "26.2"
+  edition: CE
+  deployment: compose
+  database:
+    engine: postgresql
+  contentStore:
+    type: FS
+    path: /alf_data-26/contentstore
+  search:
+    engine: opensearch
+
+migration:
+  contentStrategy: C2
+  dbStrategy: D2
+  indexStrategy: I2
+  parallelism: 4
+  coherence:
+    mode: full
+    policy: FAIL_ON_DANGLING
+
+estimation:
+  changeRatePerDay: 0.01
+
+jira:
+  mode: "off"
+
+ai:
+  enabled: false

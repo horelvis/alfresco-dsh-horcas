@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alfresco-horcas-migrator/schemas/project.schema.json",
+  "title": "Alfresco Horcas Migrator — Proyecto de migración",
+  "type": "object",
+  "required": ["project", "source", "target"],
+  "additionalProperties": false,
+  "properties": {
+    "project": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,62}$" },
+    "description": { "type": "string" },
+    "access": { "$ref": "#/$defs/access" },
+    "source": { "$ref": "#/$defs/source" },
+    "target": { "$ref": "#/$defs/target" },
+    "migration": { "$ref": "#/$defs/migration" },
+    "estimation": { "$ref": "#/$defs/estimation" },
+    "jira": { "$ref": "#/$defs/jira" },
+    "ai": { "$ref": "#/$defs/ai" }
+  },
+  "$defs": {
+    "sshDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 22 },
+        "user": { "type": "string" },
+        "auth": { "$ref": "#/$defs/sshAuth" },
+        "proxyJump": { "type": "string" },
+        "knownHostsFile": { "type": "string" },
+        "connectTimeout": { "type": "integer", "minimum": 1, "default": 10 },
+        "keepAlive": { "type": "integer", "minimum": 0, "default": 30 }
+      }
+    },
+    "secretRef": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{2,}$",
+      "description": "Nombre de variable de entorno; NUNCA el valor del secreto."
+    },
+    "sshAuth": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["key", "agent", "password"] },
+        "keyFile": { "type": "string" },
+        "secretRef": { "$ref": "#/$defs/secretRef" }
+      }
+    },
+    "host": {
+      "type": "object",
+      "required": ["host"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535, "default": 22 },
+        "user": { "type": "string" },
+        "auth": { "$ref": "#/$defs/sshAuth" },
+        "proxyJump": { "type": "string" },
+        "sudo": { "type": "boolean", "default": false },
+        "knownHostsFile": { "type": "string" },
+        "connectTimeout": { "type": "integer", "minimum": 1, "default": 10 },
+        "keepAlive": { "type": "integer", "minimum": 0, "default": 30 }
+      }
+    },
+    "tunnel": {
+      "type": "object",
+      "required": ["host", "localPort", "remoteHost", "remotePort"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string", "description": "Nombre del host SSH por el que se tuneliza." },
+        "localPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "remoteHost": { "type": "string", "default": "127.0.0.1" },
+        "remotePort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["local", "ssh"], "default": "ssh" },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "ssh": { "$ref": "#/$defs/sshDefaults" } }
+        },
+        "hosts": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/host" }
+        },
+        "tunnels": { "type": "array", "items": { "$ref": "#/$defs/tunnel" } }
+      }
+    },
+    "database": {
+      "type": "object",
+      "required": ["engine"],
+      "additionalProperties": false,
+      "properties": {
+        "engine": { "enum": ["postgresql", "mysql", "mariadb", "oracle", "sqlserver"] },
+        "host": { "type": "string" },
+        "port": { "type": "integer" },
+        "name": { "type": "string" },
+        "user": { "type": "string" },
+        "passwordRef": { "$ref": "#/$defs/secretRef" },
+        "sizeBytes": { "type": "integer", "minimum": 0, "default": 0 },
+        "via": { "enum": ["jdbc", "ssh", "tunnel"], "default": "jdbc" },
+        "sshHost": { "type": "string", "description": "Clave de access.hosts si via=ssh." }
+      }
+    },
+    "contentStore": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["FS", "S3", "Azure"] },
+        "path": { "type": "string" },
+        "bucket": { "type": "string" },
+        "container": { "type": "string" },
+        "region": { "type": "string" },
+        "sizeBytes": { "type": "integer", "minimum": 0, "default": 0 },
+        "fileCount": { "type": "integer", "minimum": 0, "default": 0 },
+        "via": { "enum": ["rsync", "scp", "s3", "azure", "local"], "default": "rsync" },
+        "sshHost": { "type": "string" }
+      }
+    },
+    "search": {
+      "type": "object",
+      "required": ["engine"],
+      "additionalProperties": false,
+      "properties": {
+        "engine": { "enum": ["solr", "opensearch", "elasticsearch"] },
+        "version": { "type": "string" },
+        "coreCount": { "type": "integer", "minimum": 0, "default": 0 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["baseUrl", "database", "contentStore"],
+      "additionalProperties": false,
+      "properties": {
+        "baseUrl": { "type": "string", "format": "uri" },
+        "edition": { "enum": ["CE", "EE"] },
+        "version": { "type": "string" },
+        "api": { "$ref": "#/$defs/secretRef" },
+        "database": { "$ref": "#/$defs/database" },
+        "contentStore": { "$ref": "#/$defs/contentStore" },
+        "search": { "$ref": "#/$defs/search" },
+        "nodeCount": { "type": "integer", "minimum": 0, "default": 0 },
+        "auditCount": { "type": "integer", "minimum": 0, "default": 0 },
+        "versionCount": { "type": "integer", "minimum": 0, "default": 0 },
+        "auth": { "enum": ["builtin", "ldap", "saml", "kerberos"] }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["version", "database", "contentStore", "search"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string", "pattern": "^2[3-9](\\.|$)|^26" },
+        "edition": { "enum": ["CE", "EE"] },
+        "deployment": { "enum": ["compose", "helm"] },
+        "database": { "$ref": "#/$defs/database" },
+        "contentStore": { "$ref": "#/$defs/contentStore" },
+        "search": { "$ref": "#/$defs/search" },
+        "hops": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "contentStrategy": { "enum": ["C1", "C2", "C3", "C4", "C5", "C6"] },
+        "dbStrategy": { "enum": ["D1", "D2", "D3"] },
+        "indexStrategy": { "enum": ["I1", "I2"] },
+        "parallelism": { "type": "integer", "minimum": 1, "default": 4 },
+        "bandwidthLimitKbps": { "type": "integer", "minimum": 0 },
+        "coherence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "enum": ["sampling", "full"], "default": "full" },
+            "policy": { "enum": ["FAIL_ON_DANGLING", "WARN", "REPAIR"], "default": "FAIL_ON_DANGLING" }
+          }
+        }
+      }
+    },
+    "estimation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "changeRatePerDay": { "type": "number", "minimum": 0, "default": 0.01 },
+        "throughputOverrides": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "contentCopyMbps": { "type": "number", "minimum": 0 },
+            "dbRestoreMbps": { "type": "number", "minimum": 0 },
+            "reindexNodesPerSec": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "jira": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["off", "csv", "rest"], "default": "off" },
+        "cloud": { "type": "boolean", "default": true },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "projectKey": { "type": "string" },
+        "tokenRef": { "$ref": "#/$defs/secretRef" }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Master Reviewer LLM. La politica de anonimizacion la elige el tecnico.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "provider": { "enum": ["opencode-zen", "ollama", "openai", "hermes-proxy", "custom"] },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "model": { "type": "string" },
+        "apiKeyEnv": { "$ref": "#/$defs/secretRef" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "default": 120 },
+        "maxTokens": { "type": "integer", "minimum": 1, "default": 2000 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0 },
+        "jsonMode": { "type": "boolean", "default": true },
+        "anonymization": { "enum": ["OFF", "SECRETS_ONLY", "STANDARD", "STRICT"], "default": "SECRETS_ONLY" },
+        "sensitiveValues": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

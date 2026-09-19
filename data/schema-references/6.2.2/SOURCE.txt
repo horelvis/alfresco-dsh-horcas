@@ -1,0 +1,8 @@
+version: 6.2.2
+repo: https://github.com/Alfresco/alfresco-community-repo
+ref: release/6.2.2
+fetched: 2026-09-18T18:47:39Z
+license: LGPL-3.0
+files:
+  - 3b63597a51a9d9f057483a9bfd9795d512a08a45fbe8f3099ec464b082a779c0  Schema-Reference-ALF.xml
+  - 3df35558d4ea3a6b143a14c525f8f9fe5a7c1c8240570389216bf5cfaf2b31a4  Schema-Reference-ACT.xml

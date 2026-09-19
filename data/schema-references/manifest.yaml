@@ -1,0 +1,33 @@
+# Referencias de esquema de Alfresco por version (para validacion PK/UNIQUE del preflight).
+#
+# Origen: Alfresco/alfresco-community-repo (LGPL-3.0). Es el mismo fichero contra el que el
+# propio ACS valida su esquema al arrancar (SchemaBootstrap). Refresco: scripts/fetch-alfresco-schemas.sh
+#
+# Hallazgo (2026-09-18): el contenido de Schema-Reference-ALF.xml es IDENTICO de 7.1.0 a 26.2.0;
+# los unicos cambios estan en 6.0.0/6.2.2/7.0.1 (p. ej. alf_server en 6.x). No hay parches de
+# upgrade posteriores a 7.1.0 en la rama Community. Schema-Reference-ACT.xml es identico en todas.
+# => La expectativa depende de la version del lado a validar; usar siempre la referencia de esa
+#    version (no hardcodear tablas).
+source: https://github.com/Alfresco/alfresco-community-repo
+license: LGPL-3.0
+files: [Schema-Reference-ALF.xml, Schema-Reference-ACT.xml]
+
+versions:
+  - version: "6.0.0"
+    ref: "release/6.0.0"
+  - version: "6.2.2"
+    ref: "release/6.2.2"
+  - version: "7.0.1"
+    ref: "release/7.0.1"
+  - version: "7.1.0"
+    ref: "release/7.1.0"
+  - version: "7.4.2"
+    ref: "release/7.4.2"
+  - version: "23.4.0"
+    ref: "23.4.0.67"
+  - version: "25.3.0"
+    ref: "25.3.0.81"
+  - version: "26.1.0"
+    ref: "26.1.0.61"
+  - version: "26.2.0"
+    ref: "26.2.0.96"
