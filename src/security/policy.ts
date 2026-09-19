@@ -18,6 +18,10 @@ export const READ_ONLY_TOOLS = [
   'migrator_dangling_explain',
   'migrator_steps_list',
   'migrator_run_status',
+  'migrator_strategy',
+  'migrator_estimate',
+  'migrator_checklist',
+  'migrator_jira_export',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',

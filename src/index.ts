@@ -14,6 +14,7 @@ import { registerWriteTools } from './tools/write.js';
 import { registerExperienceTools } from './tools/experience.js';
 import { registerExecutionTools } from './tools/execution.js';
 import { registerCoherenceTools } from './tools/coherence.js';
+import { registerPlanningTools } from './tools/planning.js';
 
 export const name = 'dsh-plugin-alfresco-migrator';
 export const inject = ['tools', 'systemPrompt'];
@@ -24,6 +25,7 @@ export function apply(ctx: Context): void {
   installLanguage(ctx as unknown as Parameters<typeof installLanguage>[0]);
   registerReadTools(ctx);
   registerCoherenceTools(ctx);
+  registerPlanningTools(ctx);
   registerExperienceTools(ctx);
   registerExecutionTools(ctx);
   registerWriteTools(ctx);
