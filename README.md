@@ -103,3 +103,13 @@ hay un intento previo fallido y conviene `resume=true`.
 ## Estado
 Fase 1: tools read-only + seguridad + datos de dominio. Fase 2: ejecución del pipeline de destino
 (provisión, copia, restore, reindex) con aprobación y guardas.
+
+## Principio de diseño: hechos en el código, juicio en el agente
+- **Tools = hechos**: parseo (`/proc/mounts`, `lsblk`, JDBC, hashes), igualdad demostrable, validación de
+  schema, SQL read-only. Devuelven datos, no conclusiones.
+- **Skills + LLM = juicio**: interpretación (¿es SAN/NAS?, ¿qué estrategia?, ¿es peligroso?, ¿qué falta
+  para el corte?). El conocimiento vive en skills (`src/skills.ts`), no hardcodeado.
+- **Guardas = código determinista**: origen inmutable, aprobación, y bloqueo **solo cuando es
+  demostrable** (mismo export/device de content store).
+- Cuando algo **no se puede saber desde el guest** (p.ej. el datastore de un disco virtual), la tool lo
+  marca `requiresHumanConfirmation` y el agente **pregunta al humano** (`ask_user`) en vez de inventar.

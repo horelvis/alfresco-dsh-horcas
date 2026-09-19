@@ -96,6 +96,73 @@ clasifica solo lo demostrable y marca cuando hace falta confirmacion humana.
   };
 }
 
+export function planningHeuristicsSkill(): SkillContent {
+  return {
+    name: 'alfresco-planning-heuristics',
+    description:
+      'Heuristicas y umbrales para elegir estrategia de contenido/BD/indice y estimar la ventana de corte (perfil de documentos, cuello de botella, auditoria elevada). Cargar al planificar o al interpretar migrator_strategy/migrator_estimate.',
+    content: `# Planificacion: estrategia y ventana
+
+Las tools \`migrator_strategy\` y \`migrator_estimate\` devuelven **hechos + un valor por defecto heuristico**.
+Ajusta el juicio al contexto; no son verdades absolutas.
+
+## Estrategia de contenido (C1-C5)
+- **Muchos documentos (>1M)**: el cuello son las operaciones por fichero -> snapshot si hay acceso al almacenamiento, si no bulk+delta. La API/CMIS es inviable.
+- **Pocos y muy grandes (media >100MB)**: limitado por ancho de banda -> stream paralelo o snapshot.
+- **Repos pequeno/heterogeneo (<100k ficheros y <200GB)**: export/import o API/CMIS.
+- **Perfil mixto**: copia bulk + delta.
+
+## BD (D1-D3)
+- Con acceso al almacenamiento -> **D1 snapshot** (mas rapido, coherente).
+- Sin el -> **D2 dump/restore**.
+- **D3 CDC/replicacion logica**: solo con REPLICA IDENTITY y tablas con PK/unicidad (ver skill de integridad). Riesgo alto de duplicados.
+
+## Indice (I1-I2)
+- >1M nodos -> **reindex por lotes de ID**; si no, **reindex estandar**. Los indices NUNCA se migran.
+
+## Ventana de corte
+- Cuello tipico: **schema-upgrade** (mas saltos = mas tiempo; auditoria muy elevada lo encarece).
+- Palancas: purgar auditoria, paralelismo, content store compartido, snapshots del NAS/SAN.
+- Confianza **LOW** si no hay throughput medido (benchmark); recalibrar con datos reales.
+
+## Deltas y cutover
+- Prepublish (bulk) + delta final durante la ventana; el delta depende de la tasa de cambio diaria.
+`,
+  };
+}
+
+export function readinessChecklistSkill(): SkillContent {
+  return {
+    name: 'alfresco-readiness-checklist',
+    description:
+      'Checklist pre/post-cutover de una migracion ACS a 26.x (version/edicion-aware): ruta, Solr, backup, esquema, CDC, coherencia, gates, provision, reindex, verificacion. Cargar antes del corte o al interpretar migrator_checklist.',
+    content: `# Checklist de preparacion (pre/post-cutover)
+
+\`migrator_checklist\` genera una **linea base** version-aware; anade o quita items segun el contexto.
+
+## Pre-cutover
+- Ruta de upgrade soportada (los saltos \`REQUIRES_VALIDATION\` exigen contacto con el fabricante).
+- Search Services (Solr) actualizado **antes** que el repositorio (si el origen es Solr).
+- Enterprise >= 26: **Solr desmantelado** y regenerado con Search Enterprise.
+- **Backup verificado/creado**: dump de BD + content store con manifiesto SHA-256 + snapshot de config.
+- **Esquema PostgreSQL con PK/unicidad** completos y **sin replicacion logica (CDC)** activa.
+- Modulos/customizaciones revisados (Extension Inspector) para la version destino.
+- **Coherencia DB <-> content store** sin referencias colgantes.
+- Gates de breaking changes: Java 21/Tomcat 11, ActiveMQ 6.x con autenticacion, eventos v2, Solr-off (EE).
+- Estimacion de ventana con benchmark; destino provisionado (o externo confirmado).
+- Almacenamiento: verificar que origen y destino no comparten datastore/LUN (skill de montajes).
+
+## Post-cutover
+- Coherencia con **dangling=0**.
+- **Indice regenerado** (Reindexing app o Solr tracking) y verificado (\`Total indexed documents\`).
+- Conteos de nodos, checksums y ACL verificados contra el origen.
+- **Origen retenido** (rollback trivial antes del switch DNS).
+
+Cada item debe poder responderse con **evidencia** de una tool; si falta, es PENDING, no OK.
+`,
+  };
+}
+
 export function migrationPlaybookSkill(): SkillContent {
   return {
     name: 'alfresco-migration-playbook',
@@ -118,7 +185,14 @@ Reglas duras: el ORIGEN es inmutable; las escrituras van solo al DESTINO y con a
 }
 
 export async function allSkills(): Promise<SkillContent[]> {
-  return [await loadRecommendationSkill(), upgradeGatesSkill(), migrationPlaybookSkill(), storageMountsSkill()];
+  return [
+    await loadRecommendationSkill(),
+    upgradeGatesSkill(),
+    planningHeuristicsSkill(),
+    readinessChecklistSkill(),
+    migrationPlaybookSkill(),
+    storageMountsSkill(),
+  ];
 }
 
 export interface SkillsContext {
@@ -131,6 +205,8 @@ export interface SkillsContext {
 export function installSkills(ctx: SkillsContext): void {
   const register = (skill: SkillContent) => ctx.skills.register({ ...skill, source: 'runtime' });
   register(upgradeGatesSkill());
+  register(planningHeuristicsSkill());
+  register(readinessChecklistSkill());
   register(migrationPlaybookSkill());
   register(storageMountsSkill());
   // La skill de recomendaciones se carga desde disco (async): se registra cuando este lista.

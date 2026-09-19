@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { loadRecommendationSkill, migrationPlaybookSkill, upgradeGatesSkill } from '../src/skills.js';
+import {
+  loadRecommendationSkill,
+  migrationPlaybookSkill,
+  planningHeuristicsSkill,
+  readinessChecklistSkill,
+  storageMountsSkill,
+  upgradeGatesSkill,
+} from '../src/skills.js';
 
 describe('skills de conocimiento', () => {
   it('gates: incluye 26.2 EE con Solr-off y 23.4 sin Java 21', () => {
@@ -22,5 +29,26 @@ describe('skills de conocimiento', () => {
     expect(skill.name).toBe('alfresco-migration-recommendations');
     expect(skill.content).toContain('COHERENCE_DANGLING');
     expect(skill.content).toContain('docs.hyland.com');
+  });
+
+  it('planificacion: umbrales de estrategia y cuello de botella', () => {
+    const skill = planningHeuristicsSkill();
+    expect(skill.content).toContain('C1-C5');
+    expect(skill.content).toContain('schema-upgrade');
+    expect(skill.content).toContain('REPLICA IDENTITY');
+  });
+
+  it('checklist: items pre/post y evidencia', () => {
+    const skill = readinessChecklistSkill();
+    expect(skill.content).toContain('SHA-256');
+    expect(skill.content).toContain('dangling=0');
+    expect(skill.content).toContain('PENDING');
+  });
+
+  it('montajes: incluye la seccion de confirmacion humana', () => {
+    const skill = storageMountsSkill();
+    expect(skill.content).toContain('datastore');
+    expect(skill.content).toContain('ask_user');
+    expect(skill.content).toContain('requiresHumanConfirmation');
   });
 });
