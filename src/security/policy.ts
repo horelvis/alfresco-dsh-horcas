@@ -29,7 +29,8 @@ export const READ_ONLY_TOOLS = [
 ] as const;
 
 // Tools de escritura: actuan SOLO sobre el destino; requieren aprobacion explicita.
-export const WRITE_TOOLS = ['migrator_target', 'migrator_execute', 'migrator_run_steps'] as const;
+// `migrator_backup` no toca origen ni destino pero ejecuta comandos y crea artefactos: tambien requiere aprobacion.
+export const WRITE_TOOLS = ['migrator_target', 'migrator_execute', 'migrator_run_steps', 'migrator_backup'] as const;
 
 const KNOWN = new Set<string>([...READ_ONLY_TOOLS, ...WRITE_TOOLS]);
 

@@ -24,6 +24,7 @@ Read-only (permitidas por defecto):
 - `migrator_estimate` — estimación por fases (assessment/pre-staging/cutover/post), cuello y riesgos.
 - `migrator_checklist` — checklist pre/post-cutover version-aware (Solr-off, gates, backup, reindex…).
 - `migrator_jira_export` — epica + hops a CSV importable por Jira.
+- `migrator_backup` — backup no destructivo del origen: dump de BD, copia del content store + manifiesto SHA-256 y snapshot de config (requiere aprobación).
 - `migrator_steps_list` — catálogo de pasos de migración disponibles.
 - `migrator_run_status` — checkpoints de un run (reanudable).
 
