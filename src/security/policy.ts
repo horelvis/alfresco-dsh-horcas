@@ -16,6 +16,7 @@ export const READ_ONLY_TOOLS = [
   'migrator_status',
   'migrator_coherence',
   'migrator_dangling_explain',
+  'migrator_assess',
   'migrator_steps_list',
   'migrator_run_status',
   'migrator_strategy',

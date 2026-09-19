@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { installSecurity, type SecurityContext } from './security/policy.js';
 import { installApproval, type ApprovalContext } from './approval.js';
 import { installLanguage } from './language.js';
+import { installSkills, type SkillsContext } from './skills.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 import { registerExperienceTools } from './tools/experience.js';
@@ -16,16 +17,19 @@ import { registerExecutionTools } from './tools/execution.js';
 import { registerCoherenceTools } from './tools/coherence.js';
 import { registerPlanningTools } from './tools/planning.js';
 import { registerBackupTools } from './tools/backup.js';
+import { registerAssessmentTools } from './tools/assessment.js';
 
 export const name = 'dsh-plugin-alfresco-migrator';
-export const inject = ['tools', 'systemPrompt'];
+export const inject = ['tools', 'systemPrompt', 'skills'];
 
 export function apply(ctx: Context): void {
   installSecurity(ctx as unknown as SecurityContext);
   installApproval(ctx as unknown as ApprovalContext);
   installLanguage(ctx as unknown as Parameters<typeof installLanguage>[0]);
+  void installSkills(ctx as unknown as SkillsContext);
   registerReadTools(ctx);
   registerCoherenceTools(ctx);
+  registerAssessmentTools(ctx);
   registerPlanningTools(ctx);
   registerBackupTools(ctx);
   registerExperienceTools(ctx);

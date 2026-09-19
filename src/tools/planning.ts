@@ -12,29 +12,30 @@ import { buildChecklist, renderChecklistMarkdown, type ChecklistInput } from '..
 import { epic, issue, writeCsv, type JiraRow } from '../domain/jira.js';
 import { connectSource, queryRows, sourceDbConfigFromEnv } from '../infra/pg.js';
 import { stateDir } from '../domain/experience.js';
+import { assessSource } from '../domain/assessment.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
 /** Normaliza un valor de dominio a JSON puro (lo que exige el schema de salida de dsh). */
 const json = <T>(value: T): never => JSON.parse(JSON.stringify(value)) as never;
 
-async function sourceStats(): Promise<{ nodes: number; dbBytes: number }> {
-  const client = await connectSource(sourceDbConfigFromEnv());
-  try {
-    const nodes = Number((await queryRows(client, 'SELECT COUNT(*) AS n FROM alf_node'))[0]?.n ?? 0);
-    const dbBytes = Number((await queryRows(client, 'SELECT pg_database_size(current_database()) AS b'))[0]?.b ?? 0);
-    return { nodes, dbBytes };
-  } finally {
-    await client.end();
-  }
+/** Inventario real del origen (fuente de verdad) para alimentar estrategia/estimacion. */
+async function sourceInventory(project: Awaited<ReturnType<typeof loadProject>>) {
+  return assessSource(project, {
+    restUser: process.env.MIGRATOR_SRC_USER,
+    restPassword: process.env.MIGRATOR_SRC_PASSWORD,
+  });
 }
 
-function strategyInput(project: Awaited<ReturnType<typeof loadProject>>, nodes: number): StrategyInput {
+function strategyInput(
+  project: Awaited<ReturnType<typeof loadProject>>,
+  inventory: { fileCount: number; contentSizeBytes: number; nodes: number },
+): StrategyInput {
   const storageAccess = (project.source.contentStore?.via ?? 'local') !== 'local' || project.access.mode === 'ssh';
   return {
-    fileCount: nodes,
-    sizeBytes: 0,
-    nodes,
+    fileCount: inventory.fileCount,
+    sizeBytes: inventory.contentSizeBytes,
+    nodes: inventory.nodes,
     storageAccess,
     transformRequired: false,
   };
@@ -55,8 +56,8 @@ export function registerPlanningTools(ctx: Context): void {
       },
       async execute(args) {
         const project = await loadProject(args.project);
-        const { nodes } = await sourceStats();
-        return json(recommendStrategy(strategyInput(project, nodes)));
+        const inventory = await sourceInventory(project);
+        return json(recommendStrategy(strategyInput(project, inventory)));
       },
     }),
   );
@@ -82,13 +83,13 @@ export function registerPlanningTools(ctx: Context): void {
       },
       async execute(args) {
         const project = await loadProject(args.project);
-        const { nodes, dbBytes } = await sourceStats();
+        const inventory = await sourceInventory(project);
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const input: EstimationInput = {
-          contentBytes: 0,
-          dbBytes,
-          nodes,
-          auditCount: 0,
+          contentBytes: inventory.contentSizeBytes,
+          dbBytes: inventory.dbSizeBytes,
+          nodes: inventory.nodes,
+          auditCount: inventory.audit,
           hops: hops.length,
           requiresValidationHops: hops.filter((h) => h.pathClass === 'REQUIRES_VALIDATION').length,
           parallelism: args.parallelism ?? 1,
