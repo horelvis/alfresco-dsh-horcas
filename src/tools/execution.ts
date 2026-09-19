@@ -8,7 +8,7 @@ import { loadProject } from '../domain/project-config.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
 import { loadCheckpoints } from '../domain/checkpoints.js';
-import { campaignId, recordAttempt, resumePoint, stateDir, latestRehearsal, type AttemptOutcome, type ExperienceAttempt } from '../domain/experience.js';
+import { campaignId, loadExperiences, recordAttempt, resumePoint, stateDir, latestRehearsal, type AttemptOutcome, type ExperienceAttempt } from '../domain/experience.js';
 import { gatherSourceFingerprint } from '../domain/fingerprint.js';
 import { dataDir } from '../domain/data-dir.js';
 import type { HostRef } from '../infra/exec.js';
@@ -66,13 +66,15 @@ export function registerExecutionTools(ctx: Context): void {
             runId: { type: 'string' },
             ok: { type: 'boolean' },
             resumeFrom: { type: 'string' },
+            warnings: { type: 'array', items: { type: 'string' } },
             results: { type: 'array', items: { type: 'object', additionalProperties: true } },
           },
         },
         render: (_args, value) => {
-          const v = value as { runId: string; ok: boolean; resumeFrom?: string; results: Array<{ step: string; ok: boolean; skipped?: boolean; detail: string }> };
+          const v = value as { runId: string; ok: boolean; resumeFrom?: string; warnings?: string[]; results: Array<{ step: string; ok: boolean; skipped?: boolean; detail: string }> };
           const lines = v.results.map((r) => `${r.ok ? (r.skipped ? '~' : 'x') : '!'} ${r.step}: ${r.detail}`);
-          return text(`run=${v.runId} ok=${v.ok}${v.resumeFrom ? ` · reanudar en ${v.resumeFrom}` : ''}\n${lines.join('\n')}`);
+          const warns = (v.warnings ?? []).map((w) => `AVISO: ${w}`).join('\n');
+          return text(`run=${v.runId} ok=${v.ok}${v.resumeFrom ? ` · reanudar en ${v.resumeFrom}` : ''}${warns ? `\n${warns}` : ''}\n${lines.join('\n')}`);
         },
       },
       async execute(args) {
@@ -80,6 +82,27 @@ export function registerExecutionTools(ctx: Context): void {
         const execute = args.execute === true;
         const state = stateDir();
         const runId = args.runId ?? newRunId(project.project);
+        const warnings: string[] = [];
+
+        // Experiencia previa de la campana (project+stage): primer intento o reanudacion pendiente.
+        const previous = (await loadExperiences(state, project.project)).find(
+          (r) => r.stage === project.stage,
+        );
+        if (!previous) {
+          warnings.push(
+            `Sin experiencia previa de "${project.project}" en stage=${project.stage}: primer intento` +
+              (project.stage === 'prod' ? '' : '; se registrara al terminar para reutilizarla en PROD'),
+          );
+        } else {
+          const pending = resumePoint(previous);
+          if (pending && args.resume !== true) {
+            warnings.push(
+              `Hay un intento previo ${previous.attempts.at(-1)?.outcome} (fallo en ${pending}); ` +
+                'considera resume=true para continuar sin repetir lo ya hecho',
+            );
+          }
+        }
+
         if (execute && project.stage === 'prod') {
           const rehearsal = await latestRehearsal(state, project.project);
           if (!rehearsal || !rehearsal.validated) {
@@ -117,7 +140,7 @@ export function registerExecutionTools(ctx: Context): void {
             // La experiencia no debe romper la ejecucion.
           }
         }
-        return { runId: report.runId, ok: report.ok, resumeFrom: report.resumeFrom ?? '', results: report.results.map((r) => ({ ...r })) };
+        return { runId: report.runId, ok: report.ok, resumeFrom: report.resumeFrom ?? '', warnings, results: report.results.map((r) => ({ ...r })) };
       },
     }),
   );

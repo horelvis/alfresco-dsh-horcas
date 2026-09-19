@@ -77,6 +77,12 @@ dsh --profile web --patch ./cordis.yml
 Variables de entorno del origen: `MIGRATOR_SRC_DB_URL` (o `MIGRATOR_SRC_DB_HOST/PORT/NAME/USER/PASSWORD`),
 `MIGRATOR_SRC_VERSION`. `MIGRATOR_DATA_DIR` sobreescribe el directorio `data/`.
 
+Idioma: el agente responde en **español por defecto** (sección de system prompt configurable con
+`MIGRATOR_LANG=es|en|pt|…`), manteniendo intactos los identificadores técnicos.
+
+Avisos proactivos: `migrator_run_steps` avisa si es el **primer intento** (sin experiencia previa) o si
+hay un intento previo fallido y conviene `resume=true`.
+
 ## Estado
 Fase 1: tools read-only + seguridad + datos de dominio. Fase 2: ejecución del pipeline de destino
 (provisión, copia, restore, reindex) con aprobación y guardas.
