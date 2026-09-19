@@ -99,16 +99,38 @@ nvme0n1 nvme   Samsung  980
     expect(classifyDevice(devices.find((d) => d.name === 'sdb'))).toBe('VIRTUAL');
   });
 
-  it('caso cliente: /repositorio en /dev/sdb1 local sin lsblk -> LOCAL', () => {
-    const mount = mountFor('/repositorio/contentstore', CLIENT_MOUNTS);
-    expect(classify(mount)).toBe('LOCAL');
-    expect(classifyDevice(deviceForMount(mount, parseLsblk('sda sata ATA SSD\nsdb sata ATA WDC_WD10')))).toBe('LOCAL_DISK');
+  it('caso cliente real (ubuntu VM ESXi): sda/sdb VMware transport=spi -> UNKNOWN (inconcluyente)', () => {
+    // Salida real de `lsblk -dn -o NAME,TRAN,VENDOR,MODEL`
+    const devices = parseLsblk(`
+loop0
+loop1
+loop3
+loop4
+loop5
+loop6
+loop7
+loop8
+sda   spi    VMware   Virtual disk
+sdb   spi    VMware   Virtual disk
+sr0   sata   NECVMWar VMware Virtual SATA CDRW Drive
+`);
+    // 'spi' no es transporte fisico conocido ni SAN/virtual explicito: no se inventa, es UNKNOWN.
+    expect(classifyDevice(devices.find((d) => d.name === 'sda'))).toBe('UNKNOWN');
+    // El dato crudo (vendor/model) queda disponible para que el agente juzgue.
+    expect(devices.find((d) => d.name === 'sdb')?.vendor).toBe('VMware');
+    expect(devices.find((d) => d.name === 'sdb')?.model).toBe('Virtual disk');
   });
 
-  it('aviso de VM: dos discos virtuales del mismo hipervisor', () => {
-    const devices = parseLsblk('sda vmw VMware Virtual disk\nsdb vmw VMware Virtual disk');
-    const mounts = parseMounts('/dev/sda1 /opt/src ext4 rw 0 0\n/dev/sdb1 /opt/dst ext4 rw 0 0');
-    const result = assessMounts('/opt/src', '/opt/dst', mounts, mounts, devices, devices);
-    expect(result.findings.some((f) => f.severity === 'WARN' && f.detail.includes('datastore'))).toBe(true);
+  it('disco fisico conocido (sata/nvme) se marca LOCAL_DISK', () => {
+    expect(classifyDevice(parseLsblk('sda sata ATA SSD').find((d) => d.name === 'sda'))).toBe('LOCAL_DISK');
+    expect(classifyDevice(parseLsblk('nvme0n1 nvme Samsung 980').find((d) => d.name === 'nvme0n1'))).toBe('LOCAL_DISK');
+  });
+
+  it('disco de hipervisor -> requiresHumanConfirmation (no se decide desde el guest)', () => {
+    const devices = parseLsblk('sda virtio - -\n');
+    const mounts = parseMounts('/dev/sda1 /repositorio ext4 rw 0 0\n');
+    const result = assessMounts('/repositorio/a', '/repositorio/b', mounts, mounts, devices, devices);
+    expect(result.requiresHumanConfirmation).toBe(true);
+    expect(result.findings.some((f) => f.detail.includes('datastore'))).toBe(true);
   });
 });

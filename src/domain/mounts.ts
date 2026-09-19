@@ -44,9 +44,10 @@ export interface BlockDevice {
 }
 
 const SAN_TRANSPORTS = new Set(['iscsi', 'fc', 'fcoe']);
-const VIRTUAL_TRANSPORTS = ['virtio', 'xen', 'vmw', 'vmbus'];
-const SAN_VENDOR_RE = /netapp|emc|hitachi|equallogic|3par|xtremio|vplex|infortrend|pure storage|solidfire|powerstore|unity|vnx/i;
-const VIRTUAL_VENDOR_RE = /vmware|qemu|virtual|kvm|xen|hyper-v|microsoft virtual/i;
+// Transportes que delatan un disco virtual de hipervisor (hecho observable, no heuristica de vendor).
+const VIRTUAL_TRANSPORTS = new Set(['virtio', 'xen', 'vmw', 'vmbus']);
+// Transportes de disco fisico conocidos. Cualquier otro (spi, vacio...) es INCONCLUYENTE desde el guest.
+const PHYSICAL_TRANSPORTS = new Set(['sata', 'ata', 'sas', 'scsi', 'nvme', 'usb', 'mmc']);
 
 /** Parsea `lsblk -dn -o NAME,TRAN,VENDOR,MODEL` (una linea por disco). */
 export function parseLsblk(text: string): BlockDevice[] {
@@ -57,7 +58,7 @@ export function parseLsblk(text: string): BlockDevice[] {
     const [name, transport, vendor, ...modelParts] = line.split(/\s+/);
     if (!name) continue;
     devices.push({
-      name: (name as string).replace(/\d+$/, '').replace(/^\/dev\//, ''),
+      name: (name as string).replace(/^\/dev\//, ''),
       transport: transport && transport !== '-' ? transport.toLowerCase() : undefined,
       vendor: vendor && vendor !== '-' ? vendor : undefined,
       model: modelParts.join(' ').trim() || undefined,
@@ -72,15 +73,18 @@ export function baseDevice(device: string): string {
   return device.replace(/^\/dev\//, '').replace(/p?\d+$/, '');
 }
 
+/**
+ * Clasificacion por HECHOS observables (transporte), sin listas de vendors: una lista de vendors
+ * nunca estara completa. Un transporte desconocido se marca UNKNOWN (inconcluyente desde el guest)
+ * y el agente decidira con el vendor/model crudo (skill de montajes).
+ */
 export function classifyDevice(device: BlockDevice | undefined): DeviceKind {
   if (!device) return 'UNKNOWN';
   const transport = (device.transport ?? '').toLowerCase();
-  const vendor = device.vendor ?? '';
-  const model = device.model ?? '';
   if (SAN_TRANSPORTS.has(transport)) return 'SAN';
-  if (SAN_VENDOR_RE.test(vendor) || SAN_VENDOR_RE.test(model)) return 'SAN';
-  if (VIRTUAL_TRANSPORTS.some((t) => transport.includes(t)) || VIRTUAL_VENDOR_RE.test(vendor)) return 'VIRTUAL';
-  return 'LOCAL_DISK';
+  if (VIRTUAL_TRANSPORTS.has(transport)) return 'VIRTUAL';
+  if (PHYSICAL_TRANSPORTS.has(transport)) return 'LOCAL_DISK';
+  return 'UNKNOWN';
 }
 
 export function deviceForMount(mount: MountEntry | undefined, devices: BlockDevice[]): BlockDevice | undefined {
@@ -177,12 +181,23 @@ export interface MountFinding {
 }
 
 export interface MountAssessment {
+  /** Hechos crudos: el agente decide sobre ellos. */
   source: MountEntry | undefined;
   target: MountEntry | undefined;
+  sourceDevice: BlockDevice | undefined;
+  targetDevice: BlockDevice | undefined;
   sourceKind: MountKind;
   targetKind: MountKind;
+  sourceDeviceKind: DeviceKind;
+  targetDeviceKind: DeviceKind;
   findings: MountFinding[];
   blocking: boolean;
+  /**
+   * `true` si NO se puede concluir desde el guest y conviene preguntar al humano
+   * (p.ej. discos virtuales: el datastore del hipervisor no es visible). El agente debe entonces
+   * usar la via de preguntas del arnes (ask_user) antes de autorizar la copia.
+   */
+  requiresHumanConfirmation: boolean;
 }
 
 /** Evalua el riesgo de copiar de `sourcePath` a `targetPath` segun los montajes de cada host. */
@@ -246,23 +261,36 @@ export function assessMounts(
   }
 
   // Aviso de VM: un disco virtual puede residir en un datastore compartido (SAN) aunque `df` lo vea
-  // como local. Si origen y destino estan en el MISMO datastore, la copia puede no aislarse.
-  if (sourceDevice && targetDevice && sourceDevice.name !== targetDevice.name
-      && classifyDevice(sourceDevice) === 'VIRTUAL' && classifyDevice(targetDevice) === 'VIRTUAL'
-      && sourceDevice.vendor && sourceDevice.vendor === targetDevice.vendor) {
+  // como local. No se compara el vendor (heuristica): si el device es de hipervisor, el agente debe
+  // confirmarlo con el humano.
+  // Hechos crudos para el agente: no todo se puede concluir desde el guest.
+  const sourceDeviceKind = classifyDevice(sourceDevice);
+  const targetDeviceKind = classifyDevice(targetDevice);
+  const inconclusive = sourceKind === 'UNKNOWN' || targetKind === 'UNKNOWN'
+    || sourceDeviceKind === 'UNKNOWN' || targetDeviceKind === 'UNKNOWN';
+  const virtual = sourceDeviceKind === 'VIRTUAL' || targetDeviceKind === 'VIRTUAL';
+  const requiresHumanConfirmation = inconclusive || virtual;
+  if (virtual) {
     findings.push({
       risk: 'SAME_BACKING_STORE',
       severity: 'WARN',
-      detail: `Discos virtuales del mismo hipervisor (${sourceDevice.vendor}): verifica que origen y destino NO compartan datastore`,
+      detail:
+        'Disco virtual de hipervisor: el datastore NO es visible desde el guest. ' +
+        'Confirmar con el humano (vSphere/Proxmox) que origen y destino NO comparten datastore/SAN',
     });
   }
 
   return {
     source,
     target,
+    sourceDevice,
+    targetDevice,
     sourceKind,
     targetKind,
+    sourceDeviceKind,
+    targetDeviceKind,
     findings,
     blocking: findings.some((f) => f.severity === 'BLOCKER'),
+    requiresHumanConfirmation,
   };
 }

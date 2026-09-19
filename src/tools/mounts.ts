@@ -44,14 +44,30 @@ export function registerMountTools(ctx: Context): void {
           properties: {
             sourceKind: { type: 'string' },
             targetKind: { type: 'string' },
+            sourceDeviceKind: { type: 'string' },
+            targetDeviceKind: { type: 'string' },
             blocking: { type: 'boolean' },
+            requiresHumanConfirmation: { type: 'boolean' },
             findings: { type: 'array', items: { type: 'object', additionalProperties: true } },
           },
         },
         render: (_args, value) => {
-          const v = value as { sourceKind: string; targetKind: string; blocking: boolean; findings: Array<{ severity: string; detail: string }> };
+          const v = value as {
+            sourceKind: string;
+            targetKind: string;
+            sourceDevice?: { transport?: string; vendor?: string; model?: string };
+            targetDevice?: { transport?: string; vendor?: string; model?: string };
+            blocking: boolean;
+            requiresHumanConfirmation: boolean;
+            findings: Array<{ severity: string; detail: string }>;
+          };
           const lines = v.findings.map((f) => `- [${f.severity}] ${f.detail}`).join('\n');
-          return text(`origen=${v.sourceKind} destino=${v.targetKind} bloqueante=${v.blocking}\n${lines || '(sin riesgos)'}`);
+          const device = (d?: { transport?: string; vendor?: string; model?: string }): string =>
+            d ? `${d.transport ?? '?'}/${d.vendor ?? '?'}/${d.model ?? '?'}` : '-';
+          return text(
+            `origen=${v.sourceKind} (${device(v.sourceDevice)}) destino=${v.targetKind} (${device(v.targetDevice)})` +
+              ` bloqueante=${v.blocking} confirmacionHumana=${v.requiresHumanConfirmation}\n${lines || '(sin hallazgos)'}`,
+          );
         },
       },
       async execute(args) {

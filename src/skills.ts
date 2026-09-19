@@ -71,13 +71,27 @@ Es comun montar el content store en un volumen remoto:
 - **NFS/NFS4** (NAS Linux), **CIFS/SMB** (NAS Windows), **LUN iSCSI/FC** (SAN, se ve como xfs/ext4 pero el device es \`/dev/mapper/mpath*\`).
 
 Riesgos y reglas:
-1. **Mismo backing store** (mismo export NFS, mismo share CIFS o mismo LUN) en origen y destino: la copia **se corrompe** (escribe sobre el origen). \`migrator_mount_check\` lo marca como **BLOCKER** y \`copy-content\` aborta.
+1. **Mismo backing store** (mismo export NFS, mismo share CIFS o mismo LUN) en origen y destino: la copia **se corrompe** (escribe sobre el origen). \`migrator_mount_check\` lo marca como **BLOCKER** cuando es demostrable y \`copy-content\` aborta.
 2. **Doble salto por red**: si ambos extremos son remotos, una copia **server-side** (rsync remoto o herramienta del NAS) evita pasar por el host de operacion.
 3. **Rendimiento impredecible**: \`rsync\` sobre NFS/CIFS es sensible a latencia; valorar snapshots del NAS/SAN para el corte.
 4. **Permisos/ownership**: NFS con \`root_squash\` o CIFS pueden no preservar el uid/gid de Alfresco; verificar tras la copia.
 5. **Snapshots de almacenamiento** (NAS/SAN) son una via de rollback rapida y coherente, preferible a copia por red para volumenes grandes.
 
-Diagnostico: \`migrator_mount_check\` (read-only) clasifica los montajes de origen y destino y lista los riesgos.
+## Lo que NO se puede saber desde el guest (preguntar al humano)
+
+La VM **no ve** el datastore del hipervisor ni el backend fisico del SAN. Si \`migrator_mount_check\`
+devuelve \`requiresHumanConfirmation=true\` (discos virtuales \`virtio/vmw\`, transporte \`spi\`, o vendor
+\`VMware\`/\`QEMU\`), **no concluyas por tu cuenta**: usa la via de preguntas del arnes (\`ask_user\`) para
+confirmar con el humano:
+
+- "El content store origen (\`/repositorio\`) y el destino ¿residen en **datastores/LUN distintos** a nivel de vSphere/Proxmox? ¿Comparten almacenamiento fisico?"
+- Si comparten datastore/LUN → tratar como mismo backing store (BLOCKER funcional aunque no demostrable desde el guest).
+
+El vendor/model crudo del dispositivo lo devuelve la tool como **hechos**: es el humano (o el LLM con
+ese dato) quien decide, no una lista de vendors en el codigo.
+
+Diagnostico: \`migrator_mount_check\` (read-only) expone los montajes y dispositivos de origen y destino,
+clasifica solo lo demostrable y marca cuando hace falta confirmacion humana.
 `,
   };
 }
