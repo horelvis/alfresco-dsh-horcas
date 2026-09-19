@@ -14,6 +14,10 @@ export const READ_ONLY_TOOLS = [
   'migrator_schema_check',
   'migrator_recommendations',
   'migrator_status',
+  'migrator_coherence',
+  'migrator_dangling_explain',
+  'migrator_steps_list',
+  'migrator_run_status',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',
@@ -21,7 +25,7 @@ export const READ_ONLY_TOOLS = [
 ] as const;
 
 // Tools de escritura: actuan SOLO sobre el destino; requieren aprobacion explicita.
-export const WRITE_TOOLS = ['migrator_target', 'migrator_execute'] as const;
+export const WRITE_TOOLS = ['migrator_target', 'migrator_execute', 'migrator_run_steps'] as const;
 
 const KNOWN = new Set<string>([...READ_ONLY_TOOLS, ...WRITE_TOOLS]);
 

@@ -10,6 +10,8 @@ import { installSecurity, type SecurityContext } from './security/policy.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 import { registerExperienceTools } from './tools/experience.js';
+import { registerExecutionTools } from './tools/execution.js';
+import { registerCoherenceTools } from './tools/coherence.js';
 
 export const name = 'dsh-plugin-alfresco-migrator';
 export const inject = ['tools'];
@@ -17,6 +19,8 @@ export const inject = ['tools'];
 export function apply(ctx: Context): void {
   installSecurity(ctx as unknown as SecurityContext);
   registerReadTools(ctx);
+  registerCoherenceTools(ctx);
   registerExperienceTools(ctx);
+  registerExecutionTools(ctx);
   registerWriteTools(ctx);
 }

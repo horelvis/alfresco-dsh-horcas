@@ -66,7 +66,10 @@ export async function queryRows(
   sql: string,
   params: unknown[] = [],
 ): Promise<Record<string, unknown>[]> {
-  const result = await client.query(selectOnly(sql), params);
+  // node-postgres usa placeholders $1..$n; aceptamos tambien `?` por comodidad.
+  let index = 0;
+  const normalized = selectOnly(sql).replace(/\?/g, () => `$${++index}`);
+  const result = await client.query(normalized, params);
   return result.rows as Record<string, unknown>[];
 }
 

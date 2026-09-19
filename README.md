@@ -18,9 +18,19 @@ Read-only (permitidas por defecto):
 - `migrator_rehearsal_record` — registra la experiencia de una migración de prueba (clone/TEST).
 - `migrator_experience_latest` — consulta el último ensayo registrado.
 - `migrator_environment_parity` — drift del origen actual respecto al ensayo (BLOCKER impide PROD).
+- `migrator_coherence` — coherencia DB↔content store (refs/dangling/orphans/verdict).
+- `migrator_dangling_explain` — para cada colgante, nodo (vivo/versión/papelera), tipo, nombre y ruta.
+- `migrator_steps_list` — catálogo de pasos de migración disponibles.
+- `migrator_run_status` — checkpoints de un run (reanudable).
 
 Escritura (marcadas `ask`; requieren aprobación humana; solo destino):
-- `migrator_target` — prepara el destino. Con `execute=true` en `stage: prod` exige un ensayo validado y sin drift de bloqueo.
+- `migrator_target` — prepara el destino (dry-run o ejecución).
+- `migrator_run_steps` — ejecuta la composición de pasos que decide el agente (dry-run por defecto; `resume`).
+
+## Pasos de migración (el agente compone, no un pipeline fijo)
+`preflight-target`, `backup-source-db`, `copy-content`, `restore-target-db`, `schema-upgrade`, `reindex`,
+`verify-target`. Cada paso es idempotente, se registra en `.migrator/checkpoints.jsonl` y respeta los
+overrides `MIGRATOR_DB_DUMP_CMD`/`RESTORE_CMD`/`REINDEX_CMD`/`MIGRATOR_DST_PROVISION`.
 
 ## Flujo ensayo → producción
 Una migración nunca se ejecuta directo en PROD: primero se ensaya en un **clon de producción o TEST**.
