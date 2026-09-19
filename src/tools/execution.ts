@@ -125,9 +125,9 @@ export function registerExecutionTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_run_status',
-      description: 'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos).',
+      description: 'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos). Acepta ruta del YAML o nombre de proyecto.',
       parameters: {
-        project: { type: 'string', required: true },
+        project: { type: 'string', required: true, description: 'Ruta del YAML de proyecto o nombre de proyecto' },
         runId: { type: 'string', required: true },
       },
       output: {
@@ -139,6 +139,12 @@ export function registerExecutionTools(ctx: Context): void {
         const checkpoints = await loadCheckpoints(stateDir(), args.project, args.runId);
         const latest = new Map<string, (typeof checkpoints)[number]>();
         for (const c of checkpoints) latest.set(c.step, c);
+        if (latest.size === 0 && (args.project.endsWith('.yaml') || args.project.endsWith('.yml'))) {
+          // El nombre de proyecto (no la ruta) es la clave de los checkpoints: normalizamos.
+          const config = await loadProject(args.project);
+          const byName = await loadCheckpoints(stateDir(), config.project, args.runId);
+          for (const c of byName) latest.set(c.step, c);
+        }
         return [...latest.values()].map((c) => ({ ...c }));
       },
     }),

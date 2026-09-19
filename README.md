@@ -51,6 +51,15 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
 ## Seguridad (encapsulada en el arnés)
 - `tools/pre-execute`: allow para read-only, `ask` para escritura, deny para tools desconocidas del plugin.
 - `ctx.tools.guard()`: guard monotónico que bloquea cualquier escritura que apunte al origen.
+- **Aprobación real** (`approval/request`): el plugin instala un *answerer* configurable por
+  `MIGRATOR_APPROVAL`:
+  - `deny` (defecto) — rechaza toda escritura (fail-closed);
+  - `allowlist` — permite solo las tools de `MIGRATOR_APPROVAL_ALLOW` (coma-separadas);
+  - `interactive` — pregunta por stdin si hay TTY (si no, rechaza);
+  - `allow` — concede todo (solo entornos de confianza/CI).
+
+  Sin answerer el arnés falla en cerrado. Verificado end-to-end: `rejected` con allowlist sin la tool y
+  `allowed-once` + ejecución real del paso con la tool permitida.
 
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.

@@ -7,6 +7,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { installSecurity, type SecurityContext } from './security/policy.js';
+import { installApproval, type ApprovalContext } from './approval.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 import { registerExperienceTools } from './tools/experience.js';
@@ -18,6 +19,7 @@ export const inject = ['tools'];
 
 export function apply(ctx: Context): void {
   installSecurity(ctx as unknown as SecurityContext);
+  installApproval(ctx as unknown as ApprovalContext);
   registerReadTools(ctx);
   registerCoherenceTools(ctx);
   registerExperienceTools(ctx);
