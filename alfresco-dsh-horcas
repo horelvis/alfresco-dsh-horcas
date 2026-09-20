@@ -48,15 +48,30 @@ export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-${OPENAI_API_KEY:-}}"
 export DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-${OPENAI_BASE_URL:-}}"
 export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-v4.1-flash}}"
 
+# Personalizacion de la UI web (titulo de la pestana).
+export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"
+# El sidebar muestra la etiqueta "DSH Local Build" (fallback de build no oficial).
+# Para mostrar el brand oficial de dsh en lugar de esa etiqueta, descomenta:
+# export DSH_CLIENT_BUILD_PROFILE=official
+
 # 4) Datos de dominio (del paquete) y estado (del proyecto actual).
 export MIGRATOR_DATA_DIR="${MIGRATOR_DATA_DIR:-$ROOT/data}"
 export MIGRATOR_STATE="${MIGRATOR_STATE:-$PWD/.migrator}"
-export MIGRATOR_APPROVAL="${MIGRATOR_APPROVAL:-deny}"
 
 usage() {
-  echo "uso: alfresco-dsh-horcas <tarea para el agente>" >&2
-  echo "     alfresco-dsh-horcas web [--port N] [--no-open]" >&2
+  echo "uso: alfresco-dsh-horcas [web [--port N] [--no-open]]   # UI web (por defecto)" >&2
+  echo "     alfresco-dsh-horcas headless \"<tarea>\"               # una tarea, no interactivo" >&2
   echo "ej.: alfresco-dsh-horcas \"analiza en solo lectura la migracion de data/projects/example.yaml\"" >&2
+}
+
+# Aprobacion por defecto segun modo: web -> interactive (responde la UI); headless -> deny.
+approval_default() {
+  if [ -z "${MIGRATOR_APPROVAL+x}" ]; then
+    case "$1" in
+      web) export MIGRATOR_APPROVAL=interactive ;;
+      *) export MIGRATOR_APPROVAL=deny ;;
+    esac
+  fi
 }
 
 # Arranca dsh (binario global o via npx).
@@ -78,6 +93,7 @@ plugin_installed() {
 launch() {
   prof="$1"
   shift
+  approval_default "$prof"
   if plugin_installed "$prof"; then
     run_dsh --profile "$prof" "$@"
   else
@@ -102,13 +118,14 @@ INSTALAR (repo privado: gh autenticado o credenciales git)
   # sin instalar, desde el repo:  ./alfresco-dsh-horcas ...
 
 EJECUTAR
-  alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"
+  alfresco-dsh-horcas                 # abre la UI web (por defecto)
   alfresco-dsh-horcas web [--port 8080] [--no-open]
-  alfresco-dsh-horcas headless "<tarea>"
+  alfresco-dsh-horcas headless "<tarea>"   # una tarea, no interactivo
+  alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"
 
 APROBACION DE ESCRITURAS (MIGRATOR_APPROVAL)
-  deny (defecto, fail-closed) | allowlist | interactive | allow
-  En web: MIGRATOR_APPROVAL=interactive alfresco-dsh-horcas web
+  web:      interactive (defecto; aprueba en la UI) | deny | allowlist | allow
+  headless: deny (defecto, fail-closed) | allowlist | allow
 EOF
     exit 0
     ;;
@@ -122,8 +139,8 @@ EOF
     launch headless "$@"
     ;;
   "")
-    usage
-    exit 2
+    # Sin argumentos: abre la UI web (UX recomendada).
+    launch web
     ;;
   *)
     [ "$#" -gt 0 ] || { usage; exit 2; }

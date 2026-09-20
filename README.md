@@ -21,8 +21,8 @@ O desde el repo ya clonado:
 ./install.sh                    # deps + build + bundle en el perfil dsh + comando global `alfresco-dsh-horcas`
 cp .env.example .env            # rellena credenciales del origen y modelo
 
-alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"   # una tarea (headless)
-alfresco-dsh-horcas web         # UI en el navegador
+alfresco-dsh-horcas             # abre la UI web (recomendado)
+alfresco-dsh-horcas headless "analiza en solo lectura la migracion de data/projects/example.yaml"
 alfresco-dsh-horcas --help      # ayuda completa
 ```
 Sin instalar, desde el repo: `./alfresco-dsh-horcas ...`. Requiere `dsh` y Node ≥ 20 (o `npx`).
@@ -135,14 +135,13 @@ alfresco-dsh-horcas web [--port 8080] [--no-open]                               
 ```
 - `install.sh` deja **`alfresco-dsh-horcas`** como comando global (al estilo `opencode`/`codex`/`claude`):
   `npm link` si puede y, si no, un symlink en `~/.local/bin`.
-- El comando carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh:
-  `--profile headless` (una tarea) o `--profile web` (UI). Usa `dsh` del PATH o, si no,
-  `npx @deepseek-ai/dsh`. Si el plugin está instalado en el perfil, lo carga como capa; si no,
+- El comando carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh.
+  Sin argumentos abre la **UI web**; `headless "<tarea>"` es no interactivo. Usa `dsh` del PATH o,
+  si no, `npx @deepseek-ai/dsh`. Si el plugin está instalado en el perfil, lo carga como capa; si no,
   cae a `--patch ./cordis.yml`.
-- Aprobación de escrituras por defecto **`deny`** (fail-closed): el agente solo lee. En **web** usa
-  `MIGRATOR_APPROVAL=interactive` para aprobar en la UI (sin TTY delega en la UI); en headless,
-  `allowlist`/`allow`.
-- Requiere `dsh` y Node ≥ 20 (o `npx`). `DSH_PROFILE` cambia el perfil de dsh (por defecto `headless`).
+- Aprobación de escrituras: **`interactive`** por defecto en **web** (aprueba en la UI; sin TTY delega
+  en ella) y **`deny`** (fail-closed) en headless. También `allowlist`/`allow` (CI).
+- Requiere `dsh` y Node ≥ 20 (o `npx`). `DSH_PROFILE` cambia el perfil de dsh.
 
 ## Desarrollo
 ```sh
