@@ -19,7 +19,7 @@ curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
 O desde el repo ya clonado:
 ```sh
 ./install.sh                    # deps + build + bundle en el perfil dsh + comando global `alfresco-dsh-horcas`
-cp .env.example .env            # rellena credenciales del origen y modelo
+cp .env.example .env            # EN EL WORKSPACE (directorio del proyecto); rellena origen/destino/modelo
 
 alfresco-dsh-horcas             # abre la UI web (recomendado)
 alfresco-dsh-horcas headless "analiza en solo lectura la migracion de data/projects/example.yaml"
@@ -211,7 +211,8 @@ alfresco-dsh-horcas web [--port 8080] [--no-open]                               
 ```
 - `install.sh` deja **`alfresco-dsh-horcas`** como comando global (al estilo `opencode`/`codex`/`claude`):
   `npm link` si puede y, si no, un symlink en `~/.local/bin`.
-- El comando carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh.
+- El comando carga el **`.env` del workspace actual** (el directorio desde el que se invoca; **no** el
+  del repo del producto), construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh.
   Sin argumentos abre la **UI web**; `headless "<tarea>"` es no interactivo. Usa `dsh` del PATH o,
   si no, `npx @deepseek-ai/dsh`. Si el plugin está instalado en el perfil, lo carga como capa; si no,
   cae a `--patch ./cordis.yml`.

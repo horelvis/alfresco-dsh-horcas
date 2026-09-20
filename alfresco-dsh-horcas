@@ -22,19 +22,16 @@ while [ -h "$SELF" ]; do
 done
 ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
 
-# 1) Configuracion local (no versionada): `.env` del proyecto actual o del paquete.
-#    Copia .env.example a .env y rellena (credenciales del origen y modelo).
-ENV_FILE=""
+# 1) Configuracion local del WORKSPACE actual (nunca la del repo del producto): `.env` en el
+#    directorio desde el que se invoca. Copia "$ROOT/.env.example" a "./.env" y rellena.
 if [ -f "$PWD/.env" ]; then
-  ENV_FILE="$PWD/.env"
-elif [ -f "$ROOT/.env" ]; then
-  ENV_FILE="$ROOT/.env"
-fi
-if [ -n "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1091
-  . "$ENV_FILE"
+  . "$PWD/.env"
   set +a
+else
+  echo "[alfresco-dsh-horcas] AVISO: no hay .env en el workspace ($PWD)." >&2
+  echo "[alfresco-dsh-horcas] copia $ROOT/.env.example a $PWD/.env y rellena (origen, destino, modelo)." >&2
 fi
 
 # 2) Construye el plugin a demanda.
