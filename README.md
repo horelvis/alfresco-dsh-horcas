@@ -5,6 +5,18 @@ Plugin de [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`
 plugin aporta el **dominio** (rutas de versión, esquemas de referencia, recomendaciones oficiales) y
 **encapsula la seguridad** (el origen es inmutable; la escritura solo va al destino y con aprobación).
 
+## Instalación y uso (rápido)
+```sh
+./install.sh                    # deps + build + bundle en el perfil dsh + comando global `alfresco-dsh-horcas`
+cp .env.example .env            # rellena credenciales del origen y modelo
+
+alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"   # una tarea (headless)
+alfresco-dsh-horcas web         # UI en el navegador
+alfresco-dsh-horcas --help      # ayuda completa
+```
+Sin instalar, desde el repo: `./alfresco-dsh-horcas ...`. Requiere `dsh` y Node ≥ 20 (o `npx`).
+Detalle en [Instalación y lanzamiento](#instalación-y-lanzamiento) y en [dsh y el plugin](#dsh-y-el-plugin-no-duplicar).
+
 ## Por qué sobre dsh
 Una migración no termina en un día: se necesita memoria entre sesiones, razonamiento iterativo con
 herramientas y observabilidad. Eso ya lo ofrece dsh; aquí solo se porta la experiencia del agente Spring.

@@ -79,6 +79,26 @@ launch() {
 }
 
 case "${1:-}" in
+  help|-h|--help)
+    cat <<'EOF'
+alfresco-dsh-horcas — agente de migracion de Alfresco (plugin dsh-alfresco-migrator) sobre DeepSeek Harness
+
+INSTALAR
+  ./install.sh                 dependencias + build + bundle en el perfil dsh + comando global (npm link)
+  cp .env.example .env         rellena credenciales del origen y modelo
+  # sin instalar, desde el repo:  ./alfresco-dsh-horcas ...
+
+EJECUTAR
+  alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"
+  alfresco-dsh-horcas web [--port 8080] [--no-open]
+  alfresco-dsh-horcas headless "<tarea>"
+
+APROBACION DE ESCRITURAS (MIGRATOR_APPROVAL)
+  deny (defecto, fail-closed) | allowlist | interactive | allow
+  En web: MIGRATOR_APPROVAL=interactive alfresco-dsh-horcas web
+EOF
+    exit 0
+    ;;
   web|--web)
     shift
     launch web "$@"
