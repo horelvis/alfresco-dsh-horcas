@@ -61,7 +61,7 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
   `MIGRATOR_APPROVAL`:
   - `deny` (defecto) — rechaza toda escritura (fail-closed);
   - `allowlist` — permite solo las tools de `MIGRATOR_APPROVAL_ALLOW` (coma-separadas);
-  - `interactive` — pregunta por stdin si hay TTY (si no, rechaza);
+  - `interactive` — pregunta por stdin si hay TTY; sin TTY (perfil web) delega en la UI del arnés;
   - `allow` — concede todo (solo entornos de confianza/CI).
 
   Sin answerer el arnés falla en cerrado. Verificado end-to-end: `rejected` con allowlist sin la tool y
@@ -95,14 +95,17 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
 ./install.sh    # dependencias + build + enlaza el lanzador `migrator` en ~/.local/bin
 cp .env.example .env   # (install.sh lo crea si no existe) y rellena credenciales y modelo
 
-./migrator.sh "analiza en solo lectura la migracion de data/projects/example.yaml"
-migrator "analiza en solo lectura la migracion de data/projects/example.yaml"   # si ~/.local/bin esta en el PATH
+./migrator.sh "analiza en solo lectura la migracion de data/projects/example.yaml"   # headless
+./migrator.sh web [--port 8080] [--no-open]                                          # UI en el navegador
+migrator "analiza en solo lectura la migracion de data/projects/example.yaml"        # si ~/.local/bin esta en el PATH
 ```
-- `migrator.sh` carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza
-  `dsh --profile headless --patch ./cordis.yml`.
-- Aprobación de escrituras por defecto **`deny`** (fail-closed): el agente solo lee. Para permitir
-  escrituras con aprobación: `MIGRATOR_APPROVAL=interactive|allowlist|allow`.
-- Requiere `dsh` y Node ≥ 20. `DSH_PROFILE` cambia el perfil de dsh (por defecto `headless`).
+- `migrator.sh` carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh
+  con el patch del plugin: `--profile headless` (una tarea) o `--profile web` (UI). Usa el binario `dsh`
+  del PATH o, si no está, `npx @deepseek-ai/dsh`.
+- Aprobación de escrituras por defecto **`deny`** (fail-closed): el agente solo lee. En **web** usa
+  `MIGRATOR_APPROVAL=interactive` para aprobar en la UI (sin TTY delega en la UI); en headless,
+  `allowlist`/`allow`.
+- Requiere `dsh` y Node ≥ 20 (o `npx`). `DSH_PROFILE` cambia el perfil de dsh (por defecto `headless`).
 
 ## Desarrollo
 ```sh

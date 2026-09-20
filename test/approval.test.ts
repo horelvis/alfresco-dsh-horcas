@@ -109,10 +109,11 @@ describe('handler de aprobacion (sin bloquear subagentes ni tools ajenas)', () =
     expect(await handler({ toolName: 'migrator_schema_check', agent: { parentAgent: {} } }, async () => 'rejected')).toBe('allowed-once');
   });
 
-  it('en interactive, una escritura en subagente NO se bloquea (grant one-shot)', async () => {
-    // interactive sin TTY responde rejected; lo relevante es que la ruta llega al modo (no al bloqueo por delegacion).
+  it('en interactive sin TTY delega en el siguiente answerer (perfil web)', async () => {
+    // Sin TTY no hay prompt por stdin: se delega en la UI del arnes (no se bloquea por delegacion).
     const { handler } = fakeCtx('interactive');
-    expect(await handler({ toolName: 'migrator_run_steps', agent: { parentAgent: {} } }, async () => 'allowed-once')).toBe('rejected');
+    expect(await handler({ toolName: 'migrator_run_steps', agent: { parentAgent: {} } }, async () => 'allowed-once')).toBe('allowed-once');
+    expect(await handler({ toolName: 'migrator_run_steps' }, async () => 'rejected')).toBe('rejected');
   });
 
   it('la tool del migrador permitida en el agente raiz se concede', async () => {

@@ -7,7 +7,8 @@
  * Modos (`MIGRATOR_APPROVAL`):
  * - `deny` (defecto): rechaza toda escritura (fail-closed).
  * - `allowlist`: permite solo las tools de `MIGRATOR_APPROVAL_ALLOW` (coma-separadas).
- * - `interactive`: pregunta por stdin (solo si hay TTY); sin TTY rechaza.
+ * - `interactive`: pregunta por stdin si hay TTY; sin TTY (p.ej. perfil `web`) delega en el siguiente
+ *   answerer (la UI del arnes), que decide con el humano.
  * - `allow`: concede todo (solo entornos de confianza/CI).
  *
  * Nota: el evento no expone los argumentos de la tool (solo nombre y motivo), por eso la allowlist
@@ -183,10 +184,10 @@ export function installApproval(ctx: ApprovalContext, options: ApprovalOptions =
     let outcome: ApprovalOutcome;
     if (options.mode === 'interactive') {
       if (!process.stdin.isTTY) {
-        outcome = 'rejected';
-      } else {
-        outcome = (await prompt(request)) ? 'allowed-once' : 'rejected';
+        // Sin TTY (p.ej. perfil `web`): que decida el siguiente answerer (la UI del arnes).
+        return next();
       }
+      outcome = (await prompt(request)) ? 'allowed-once' : 'rejected';
     } else {
       outcome = decideApproval(request, options) ?? (await next());
     }
