@@ -23,6 +23,7 @@ describe('politica de seguridad', () => {
   it('guardrail: permite lectura/orquestacion y deniega ejecucion/mutacion', () => {
     // Denegadas (ejecucion / mutacion / red arbitraria).
     expect(decide({ name: 'bash' }, { guardrail: true }).kind).toBe('deny');
+    expect((decide({ name: 'bash' }, { guardrail: true }) as { reason: string }).reason).toMatch(/read\/glob\/grep/);
     expect(decide({ name: 'write' }, { guardrail: true }).kind).toBe('deny');
     expect(decide({ name: 'str_replace_editor' }, { guardrail: true }).kind).toBe('deny');
     expect(decide({ name: 'web_fetch' }, { guardrail: true }).kind).toBe('deny');

@@ -109,6 +109,17 @@ export const GUARDRAIL_ALLOW = [
   'ask_user_question',
 ] as const;
 
+/** Sugerencia accionable para una tool denegada por el guardrail. */
+const GUARDRAIL_HINT: Record<string, string> = {
+  bash: 'para inspeccionar usa read/glob/grep; para actuar, las tools migrator_*',
+  pwsh: 'para inspeccionar usa read/glob/grep; para actuar, las tools migrator_*',
+  write: 'para crear el proyecto usa migrator_wizard; las escrituras van por migrator_*',
+  edit: 'edita ficheros del proyecto con migrator_wizard o las tools migrator_*',
+  str_replace_editor: 'edita ficheros del proyecto con migrator_wizard o las tools migrator_*',
+  web_fetch: 'en modo migracion no hay acceso web; usa las fuentes oficiales ya incluidas (migrator_recommendations)',
+  web_search: 'en modo migracion no hay acceso web; usa migrator_recommendations',
+};
+
 export interface PolicyOptions {
   /** Guardrail solo-migracion: deniega las tools ajenas fuera de las capacidades permitidas. */
   guardrail?: boolean;
@@ -191,7 +202,11 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}, toolDescript
   }
   // Tool ajena al plugin (bash/fs/web/...): se delega, salvo con el guardrail activo.
   if (options.guardrail && !new Set<string>([...GUARDRAIL_ALLOW, ...(options.allowTools ?? [])]).has(name)) {
-    return { kind: 'deny', reason: `Guardrail solo-migracion: la tool '${name}' no esta permitida` };
+    const hint = GUARDRAIL_HINT[name];
+    return {
+      kind: 'deny',
+      reason: `Guardrail solo-migracion: la tool '${name}' no esta permitida${hint ? `; ${hint}` : ''}`,
+    };
   }
   return { kind: 'allow' };
 }
