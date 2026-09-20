@@ -102,7 +102,16 @@ export function parseProjectYaml(text: string): ProjectConfig {
 
 export async function loadProject(projectPath: string): Promise<ProjectConfig> {
   const resolved = path.isAbsolute(projectPath) ? projectPath : path.resolve(process.cwd(), projectPath);
-  return parseProjectYaml(await readFile(resolved, 'utf8'));
+  let text: string;
+  try {
+    text = await readFile(resolved, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      throw new Error(`Proyecto no encontrado: ${resolved}. Crea el YAML con migrator_wizard o corrige la ruta.`);
+    }
+    throw error;
+  }
+  return parseProjectYaml(text);
 }
 
 export function projectSchemaPath(): string {
