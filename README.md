@@ -103,16 +103,18 @@ solo añade **dominio** y no reimplementa nada de eso:
 
 ## Instalación y lanzamiento
 ```sh
-./install.sh    # deps + build + registra el bundle en el perfil dsh (PROFILE, por defecto 'web') + enlaza `migrator`
+./install.sh    # deps + build + registra el bundle en el perfil dsh + instala el comando `alfresco-dsh-horcas`
 cp .env.example .env   # (install.sh lo crea si no existe) y rellena credenciales y modelo
 
-./migrator.sh "analiza en solo lectura la migracion de data/projects/example.yaml"   # headless
-./migrator.sh web [--port 8080] [--no-open]                                          # UI en el navegador
-migrator "analiza en solo lectura la migracion de data/projects/example.yaml"        # si ~/.local/bin esta en el PATH
+alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"   # headless
+alfresco-dsh-horcas web [--port 8080] [--no-open]                                          # UI en el navegador
+./alfresco-dsh-horcas "..."   # tambien funciona sin instalar, desde el repo
 ```
-- `migrator.sh` carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh:
-  `--profile headless` (una tarea) o `--profile web` (UI). Usa `dsh` del PATH o, si no está,
-  `npx @deepseek-ai/dsh`. Si el plugin ya está instalado en el perfil, lo carga como capa; si no,
+- `install.sh` deja **`alfresco-dsh-horcas`** como comando global (al estilo `opencode`/`codex`/`claude`):
+  `npm link` si puede y, si no, un symlink en `~/.local/bin`.
+- El comando carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh:
+  `--profile headless` (una tarea) o `--profile web` (UI). Usa `dsh` del PATH o, si no,
+  `npx @deepseek-ai/dsh`. Si el plugin está instalado en el perfil, lo carga como capa; si no,
   cae a `--patch ./cordis.yml`.
 - Aprobación de escrituras por defecto **`deny`** (fail-closed): el agente solo lee. En **web** usa
   `MIGRATOR_APPROVAL=interactive` para aprobar en la UI (sin TTY delega en la UI); en headless,

@@ -36,15 +36,20 @@ if [ ! -f "$ROOT/.env" ] && [ -f "$ROOT/.env.example" ]; then
   echo "[instalador] creado .env desde .env.example (rellena credenciales y modelo)."
 fi
 
-chmod +x "$ROOT/migrator.sh" "$ROOT/install.sh"
-mkdir -p "$PREFIX"
-ln -sf "$ROOT/migrator.sh" "$PREFIX/migrator"
-echo "[instalador] lanzador instalado: $PREFIX/migrator"
+chmod +x "$ROOT/alfresco-dsh-horcas" "$ROOT/install.sh"
 
-case ":$PATH:" in
-  *":$PREFIX:"*) ;;
-  *) echo "[instalador] anade $PREFIX al PATH para usar 'migrator' directamente." ;;
-esac
+# Comando global `alfresco-dsh-horcas`: `npm link` si es posible; si no, symlink en PREFIX.
+if ( cd "$ROOT" && npm link >/dev/null 2>&1 ); then
+  echo "[instalador] comando instalado: alfresco-dsh-horcas (via npm link)"
+else
+  mkdir -p "$PREFIX"
+  ln -sf "$ROOT/alfresco-dsh-horcas" "$PREFIX/alfresco-dsh-horcas"
+  echo "[instalador] comando enlazado: $PREFIX/alfresco-dsh-horcas"
+  case ":$PATH:" in
+    *":$PREFIX:"*) ;;
+    *) echo "[instalador] anade $PREFIX al PATH para usar 'alfresco-dsh-horcas'." ;;
+  esac
+fi
 
 if ! command -v dsh >/dev/null 2>&1; then
   echo "[instalador] AVISO: 'dsh' no esta en el PATH; instala DeepSeek Harness (npm i -g @deepseek-ai/dsh)." >&2

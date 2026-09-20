@@ -12,11 +12,15 @@
       "default": "./dist/index.js"
     }
   },
+  "bin": {
+    "alfresco-dsh-horcas": "./alfresco-dsh-horcas"
+  },
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
     "data",
-    "cordis.yml"
+    "cordis.yml",
+    "alfresco-dsh-horcas"
   ],
   "dsh": {
     "bundle": {

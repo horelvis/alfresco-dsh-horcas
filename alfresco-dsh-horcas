@@ -1,17 +1,26 @@
 #!/usr/bin/env sh
 #
-# Lanzador del agente de migracion de Alfresco (plugin dsh-alfresco-migrator) sobre DeepSeek Harness.
+# alfresco-dsh-horcas: lanza el agente de migracion de Alfresco (plugin dsh-alfresco-migrator) sobre
+# DeepSeek Harness como un comando mas (al estilo opencode / codex / claude).
 #
-#   ./migrator.sh "analiza en solo lectura la migracion de data/projects/example.yaml"   # headless
-#   ./migrator.sh web [--port 8080] [--no-open]                                          # UI web
+#   alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"   # headless
+#   alfresco-dsh-horcas web [--port 8080] [--no-open]                                         # UI web
 #
-# Carga `.env`, construye el plugin si falta `dist/`, mapea el modelo al vocabulario de dsh
-# (`DEEPSEEK_*`) y arranca dsh con el patch del plugin. Usa el binario `dsh` si esta en el PATH o,
-# si no, `npx @deepseek-ai/dsh`. La aprobacion de escrituras por defecto es `deny` (fail-closed):
-# en headless el agente solo lee; en web usa `MIGRATOR_APPROVAL=interactive` para aprobar en la UI.
+# Carga `.env`, construye el plugin si falta `dist/`, mapea el modelo a `DEEPSEEK_*` y arranca dsh con
+# el plugin (capa del perfil si esta instalado; si no, `--patch ./cordis.yml`). Aprobacion de escrituras
+# por defecto `deny` (fail-closed); en web usa MIGRATOR_APPROVAL=interactive para aprobar en la UI.
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# Resuelve el directorio real del comando aunque se invoque via symlink (npm link / PATH).
+SELF=$0
+while [ -h "$SELF" ]; do
+  LINK=$(ls -ld "$SELF" | sed 's/.* -> //')
+  case "$LINK" in
+    /*) SELF=$LINK ;;
+    *) SELF=$(dirname "$SELF")/$LINK ;;
+  esac
+done
+ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
 
 # 1) Configuracion local (no versionada): copia .env.example a .env y rellena.
 if [ -f "$ROOT/.env" ]; then
@@ -23,7 +32,7 @@ fi
 
 # 2) Construye el plugin a demanda.
 if [ ! -f "$ROOT/dist/index.js" ]; then
-  echo "[migrator] construyendo el plugin..." >&2
+  echo "[alfresco-dsh-horcas] construyendo el plugin..." >&2
   ( cd "$ROOT" && npm install && npm run build )
 fi
 
@@ -38,9 +47,9 @@ export MIGRATOR_STATE="${MIGRATOR_STATE:-$ROOT/.migrator}"
 export MIGRATOR_APPROVAL="${MIGRATOR_APPROVAL:-deny}"
 
 usage() {
-  echo "uso: $(basename "$0") <tarea para el agente>" >&2
-  echo "     $(basename "$0") web [--port N] [--no-open]" >&2
-  echo "ej.: $(basename "$0") \"analiza en solo lectura la migracion de data/projects/example.yaml\"" >&2
+  echo "uso: alfresco-dsh-horcas <tarea para el agente>" >&2
+  echo "     alfresco-dsh-horcas web [--port N] [--no-open]" >&2
+  echo "ej.: alfresco-dsh-horcas \"analiza en solo lectura la migracion de data/projects/example.yaml\"" >&2
 }
 
 # Arranca dsh (binario global o via npx).
@@ -48,7 +57,7 @@ run_dsh() {
   if command -v dsh >/dev/null 2>&1; then
     exec dsh "$@"
   fi
-  echo "[migrator] 'dsh' no esta en el PATH; usando npx @deepseek-ai/dsh" >&2
+  echo "[alfresco-dsh-horcas] 'dsh' no esta en el PATH; usando npx @deepseek-ai/dsh" >&2
   exec npx --yes @deepseek-ai/dsh "$@"
 }
 
