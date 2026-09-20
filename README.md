@@ -93,6 +93,7 @@ La seguridad **no depende del prompt**: está impuesta en código determinista. 
 | 9 | **Reviewer LLM** | Anonimización reversible; ante duda **ABSTAIN** (nunca aprueba solo) | `domain/reviewer.ts`, `domain/privacy.ts` | `MIGRATOR_AI_ANONYMIZATION` |
 | 10 | **Secretos** | Compose sin secretos embebidos; `.env` ignorado por git | `domain/provision.ts`, `.gitignore` | — |
 | 11 | **Recuperación tras interrupción** | Nunca reintentar a ciegas un paso con efectos: verificar estado y `resume` | `domain/checkpoints.ts`, `tools/execution.ts` | `migrator_run_status`, `resume` |
+| 12 | **Guarda de hops** | Ruta multi-hop: no se ejecuta si el DESTINO no está en la versión del hop que toca (verificado por REST, fail-closed) | `domain/hops.ts`, `tools/execution.ts` | `MIGRATOR_DST_BASE_URL` |
 
 ### 1. Origen inmutable
 - Todo acceso a PostgreSQL pasa por `selectOnly()` (solo `SELECT`/`WITH`).
@@ -169,6 +170,13 @@ marca como *"outcome unknown"* y no cierra el turno. Para nuestras tools:
 Las tools **read-only declaran `timeoutMs`** (15s–5min según coste) para que no cuelguen indefinidamente.
 Las de **escritura no lo declaran** a propósito: cancelar un paso con efectos podría dejar un resultado
 ambiguo ("outcome unknown"); en su lugar son **idempotentes + checkpointed** y se reanudan con `resume`.
+
+### 12. Guarda de hops (ruta multi-hop)
+Con una ruta de varios saltos (`7.1.0 → 7.4 → 25.3 → 26.2`), `migrator_run_steps` **no ejecuta** hasta que
+el DESTINO esté en la versión del hop que toca. La versión del destino se **lee** del propio repositorio
+(Discovery REST vía `MIGRATOR_DST_BASE_URL`), **no se declara**; si no se puede verificar, **falla en
+cerrado**. El progreso por hop se registra en `.migrator/hops.jsonl`, así que no se puede saltar al hop
+final sin pasar por los intermedios. Para una ruta de un solo hop la guarda no aplica.
 
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.

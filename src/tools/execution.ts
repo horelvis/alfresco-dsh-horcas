@@ -7,6 +7,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { requireSupportedUpgradePath, upgradePathWarnings } from '../domain/upgrade-paths.js';
+import { assertDestinationHop, recordCompletedHop } from '../domain/hops.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
 import { loadCheckpoints } from '../domain/checkpoints.js';
@@ -89,7 +90,11 @@ export function registerExecutionTools(ctx: Context): void {
         const warnings: string[] = [];
 
         // Regla dura: nunca un salto de version no soportado; avisa de los saltos intermedios.
-        warnings.push(...upgradePathWarnings(requireSupportedUpgradePath(project.source.version, project.target.version)));
+        const hops = requireSupportedUpgradePath(project.source.version, project.target.version);
+        warnings.push(...upgradePathWarnings(hops));
+
+        // Guarda de hops: en ruta multi-hop, el DESTINO debe estar en la version del hop que toca.
+        if (execute) await assertDestinationHop(project, state, hops);
 
         // Experiencia previa de la campana (project+stage): primer intento o reanudacion pendiente.
         const previous = (await loadExperiences(state, project.project)).find(
@@ -128,6 +133,11 @@ export function registerExecutionTools(ctx: Context): void {
           args.steps,
           { resume: args.resume === true, dryRun: !execute },
         );
+
+        // Progreso de hops: si el run aplico el schema-upgrade y termino OK, registra el hop.
+        if (execute && report.ok && args.steps.includes('schema-upgrade')) {
+          await recordCompletedHop(state, project, hops);
+        }
 
         // Registra el intento en la campana de experiencia (salvo dry-run) para poder restaurar y reanudar.
         if (execute && project.stage !== 'prod') {
