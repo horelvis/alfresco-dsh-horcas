@@ -41,6 +41,19 @@ describe('politica de seguridad', () => {
     expect(decide({ name: 'bash' }, { guardrail: true, allowTools: ['bash'] }).kind).toBe('allow');
   });
 
+  it('solo-lectura: deniega escritura del migrador; read-only sigue permitido', () => {
+    expect(decide({ name: 'migrator_run_steps' }, { readOnly: true }).kind).toBe('deny');
+    expect(decide({ name: 'migrator_target' }, { readOnly: true }).kind).toBe('deny');
+    expect(decide({ name: 'migrator_coherence' }, { readOnly: true }).kind).toBe('allow');
+    // Con escritura habilitada, pide aprobacion.
+    expect(decide({ name: 'migrator_run_steps' }, { readOnly: false }).kind).toBe('ask');
+  });
+
+  it('MIGRATOR_MODE por defecto readonly; write lo desbloquea', () => {
+    expect(policyOptionsFromEnv({}).readOnly).toBe(true);
+    expect(policyOptionsFromEnv({ MIGRATOR_MODE: 'write' }).readOnly).toBe(false);
+  });
+
   it('policyOptionsFromEnv lee MIGRATOR_GUARDRAIL / _ALLOW (y alias STRICT_TOOLS)', () => {
     expect(policyOptionsFromEnv({}).guardrail).toBe(false);
     expect(policyOptionsFromEnv({ MIGRATOR_GUARDRAIL: 'true' }).guardrail).toBe(true);

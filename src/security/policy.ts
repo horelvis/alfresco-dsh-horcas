@@ -6,6 +6,8 @@
  * - Guardrail solo-migracion (`MIGRATOR_GUARDRAIL=true`): las tools ajenas al plugin se permiten por
  *   CAPACIDAD (lectura e inspeccion, orquestacion/multiagente, preguntas al humano), y se deniegan
  *   las de ejecucion/mutacion (bash/pwsh/escritura/web). Extensible con `MIGRATOR_GUARDRAIL_ALLOW`.
+ * - Modo solo-lectura (`MIGRATOR_MODE=readonly`, por defecto): las tools de ESCRITURA del migrador se
+ *   DENIEGAN de forma determinista (no depende del prompt); para escribir, `MIGRATOR_MODE=write`.
  * - Guard monotono: el ORIGEN es inmutable; ninguna operacion de escritura puede nombrarlo.
  *
  * La aprobacion real la provee el servicio de approval de `dsh-base`; aqui solo se decide allow/ask/deny.
@@ -95,6 +97,8 @@ export interface PolicyOptions {
   guardrail?: boolean;
   /** Tools ajenas adicionales permitidas por el usuario (amplia el guardrail). */
   allowTools?: string[];
+  /** Solo-lectura (por defecto): deniega las tools de escritura del migrador, sin depender del prompt. */
+  readOnly?: boolean;
 }
 
 /** Forma minima del Context de Cordis que necesita la politica (evita acoplarse a tipos rc). */
@@ -113,6 +117,12 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
       return { kind: 'deny', reason: `Tool desconocida del migrador: ${name}` };
     }
     if (isWrite(name)) {
+      if (options.readOnly) {
+        return {
+          kind: 'deny',
+          reason: `Modo solo-lectura: '${name}' escribe en el DESTINO. Activa MIGRATOR_MODE=write para permitirlo.`,
+        };
+      }
       return { kind: 'ask', reason: `La tool ${name} puede escribir en el DESTINO; requiere aprobacion` };
     }
     return { kind: 'allow' };
@@ -126,6 +136,7 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
 
 /**
  * Opciones desde el entorno:
+ * - `MIGRATOR_MODE`: `readonly` (defecto) deniega la escritura del migrador; `write` la permite (con aprobacion).
  * - `MIGRATOR_GUARDRAIL` (alias: `MIGRATOR_STRICT_TOOLS`): activa el guardrail solo-migracion.
  * - `MIGRATOR_GUARDRAIL_ALLOW` (alias: `MIGRATOR_STRICT_ALLOW`): tools extra separadas por comas.
  */
@@ -136,7 +147,8 @@ export function policyOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Poli
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  return { guardrail, allowTools };
+  const readOnly = (env.MIGRATOR_MODE ?? 'readonly').toLowerCase() !== 'write';
+  return { guardrail, allowTools, readOnly };
 }
 
 /** Guard monotono: bloquea escritura que apunte al origen (inmutable). */

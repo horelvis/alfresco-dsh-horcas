@@ -60,6 +60,9 @@ export MIGRATOR_STATE="${MIGRATOR_STATE:-$PWD/.migrator}"
 # Guardrail solo-migracion: permite lectura/orquestacion y deniega bash/escritura/web.
 # Pon false para uso general; amplia con MIGRATOR_GUARDRAIL_ALLOW=bash,read.
 export MIGRATOR_GUARDRAIL="${MIGRATOR_GUARDRAIL:-true}"
+# Solo-lectura (determinista): las tools de ESCRITURA del migrador se DENIEGAN. Para el ensayo real
+# hay que habilitar explicitamente la escritura: MIGRATOR_MODE=write (y la aprobacion que corresponda).
+export MIGRATOR_MODE="${MIGRATOR_MODE:-readonly}"
 
 usage() {
   echo "uso: alfresco-dsh-horcas [web [--port N] [--no-open]]   # UI web (por defecto)" >&2
@@ -136,6 +139,10 @@ EJECUTAR
   alfresco-dsh-horcas web [--port 8080] [--no-open]
   alfresco-dsh-horcas headless "<tarea>"   # una tarea, no interactivo
   alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"
+
+MODO (seguridad determinista, no depende del prompt)
+  Solo-lectura por defecto: las tools de ESCRITURA del migrador se DENIEGAN.
+  Ensayo/cutover real: MIGRATOR_MODE=write (ademas de la aprobacion correspondiente).
 
 APROBACION DE ESCRITURAS (MIGRATOR_APPROVAL)
   web:      interactive (defecto; aprueba en la UI) | deny | allowlist | allow

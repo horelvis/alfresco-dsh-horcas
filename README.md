@@ -141,6 +141,9 @@ alfresco-dsh-horcas web [--port 8080] [--no-open]                               
   cae a `--patch ./cordis.yml`.
 - Aprobación de escrituras: **`interactive`** por defecto en **web** (aprueba en la UI; sin TTY delega
   en ella) y **`deny`** (fail-closed) en headless. También `allowlist`/`allow` (CI).
+- **Solo-lectura determinista** por defecto (`MIGRATOR_MODE=readonly`): las tools de **escritura** del
+  migrador se **deniegan** en el código (no depende de que el prompt diga "no escribas"). El ensayo/cutover
+  real exige habilitarla explícitamente: `MIGRATOR_MODE=write` (+ la aprobación que corresponda).
 - **Guardrail solo-migración** por defecto (`MIGRATOR_GUARDRAIL=true`): permite por **capacidad**
   lectura/inspección (`read`/`glob`/`grep`) y orquestación (`subagent`, `todo_write`, `skill`, jobs, goal,
   `ask_user_question`), y **deniega** ejecución/mutación (`bash`/`pwsh`, `write`/`edit`, `web_*`).
