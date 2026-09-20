@@ -109,6 +109,36 @@ export interface SecurityContext {
 
 const isWrite = (name: string): boolean => (WRITE_TOOLS as readonly string[]).includes(name);
 
+/** Motivo de aprobacion descriptivo para una escritura del migrador (se muestra al humano). */
+export function writeReason(name: string, args: unknown): string {
+  const a = (args ?? {}) as Record<string, unknown>;
+  const project = a.project ? String(a.project) : '(proyecto no indicado)';
+  const mode = a.execute === true ? 'EXECUTE (va a escribir)' : 'dry-run (solo planifica)';
+  const steps = Array.isArray(a.steps) ? (a.steps as unknown[]).map((s) => String(s)).join(', ') : undefined;
+  const extra: string[] = [];
+  if (a.delta === true) extra.push('copia incremental');
+  if (a.resume === true) extra.push('resume');
+  const suffix = extra.length ? ` (${extra.join(', ')})` : '';
+  switch (name) {
+    case 'migrator_backup':
+      return `Backup NO destructivo del ORIGEN de "${project}": dump de BD + copia del content store + manifiesto SHA-256 + config [${mode}]. No modifica el origen.`;
+    case 'migrator_copy_content':
+      return `Copia el content store del ORIGEN al DESTINO de "${project}" [${mode}]${suffix}.`;
+    case 'migrator_run_steps':
+      return `Ejecuta en el DESTINO de "${project}" los pasos [${steps ?? '?'}] [${mode}]${suffix}.`;
+    case 'migrator_target':
+      return `Prepara/provisiona el DESTINO de "${project}" (Compose por hop) [${mode}].`;
+    case 'migrator_provision':
+      return `Provisiona el DESTINO de "${project}" en Docker Compose [${mode}].`;
+    case 'migrator_reindex':
+      return `Regenera el indice de busqueda del DESTINO de "${project}" (los indices no se migran) [${mode}]${suffix}.`;
+    case 'migrator_wizard':
+      return `Escribe el YAML del proyecto "${project}" en "${a.out ? String(a.out) : '(ruta por defecto)'}".`;
+    default:
+      return `La tool ${name} puede escribir en el DESTINO; requiere aprobacion.`;
+  }
+}
+
 /** Decide la politica de una llamada del migrador (exportada para tests). */
 export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
   const name = exec.name;
@@ -123,7 +153,7 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
           reason: `Modo solo-lectura: '${name}' escribe en el DESTINO. Activa MIGRATOR_MODE=write para permitirlo.`,
         };
       }
-      return { kind: 'ask', reason: `La tool ${name} puede escribir en el DESTINO; requiere aprobacion` };
+      return { kind: 'ask', reason: writeReason(name, exec.arguments) };
     }
     return { kind: 'allow' };
   }

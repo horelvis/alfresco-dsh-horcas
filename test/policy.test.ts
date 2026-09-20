@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decide, guardReason, policyOptionsFromEnv } from '../src/security/policy.js';
+import { decide, guardReason, policyOptionsFromEnv, writeReason } from '../src/security/policy.js';
 
 describe('politica de seguridad', () => {
   it('read-only se permite', () => {
@@ -62,6 +62,18 @@ describe('politica de seguridad', () => {
       'bash',
       'read',
     ]);
+  });
+
+  it('el motivo de aprobacion es descriptivo (proyecto, pasos, execute)', () => {
+    expect(writeReason('migrator_provision', { project: '/p/gadex.yaml', execute: true })).toMatch(
+      /gadex\.yaml.*EXECUTE/s,
+    );
+    const run = writeReason('migrator_run_steps', { project: 'x', steps: ['copy-content', 'reindex'], execute: false });
+    expect(run).toContain('copy-content, reindex');
+    expect(run).toContain('dry-run');
+    const decision = decide({ name: 'migrator_target', arguments: { project: '/p.yaml' } });
+    expect(decision.kind).toBe('ask');
+    expect((decision as { reason: string }).reason).toContain('/p.yaml');
   });
 
   it('el guard bloquea escritura sobre el origen', () => {
