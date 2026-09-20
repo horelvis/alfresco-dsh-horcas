@@ -64,25 +64,27 @@ describe('politica de seguridad', () => {
     ]);
   });
 
-  it('el motivo reutiliza la descripcion de la tool y de los pasos (sin hardcode)', () => {
+  it('el motivo es estructurado (title/details/body) reutilizando las descripciones', () => {
     const prov = writeReason(
       'migrator_provision',
       { project: '/p/gadex.yaml', execute: true },
       'Provisiona el DESTINO en Docker Compose.',
     );
-    expect(prov).toContain('Provisiona el DESTINO en Docker Compose');
-    expect(prov).toContain('/p/gadex.yaml');
-    expect(prov).toContain('EXECUTE');
+    expect(prov.title).toContain('Provisiona el DESTINO en Docker Compose');
+    expect(prov.details.join(' ')).toContain('/p/gadex.yaml');
+    expect(prov.details.join(' ')).toContain('EXECUTE');
+    expect(prov.body).toContain('ORIGEN');
+    expect(prov.reason).not.toContain('\n');
 
     const run = writeReason(
       'migrator_run_steps',
       { project: 'x', steps: ['copy-content', 'reindex'], execute: false },
       'Ejecuta una composicion de pasos en el DESTINO.',
     );
-    expect(run).toContain('copy-content — Copia el content store del origen al destino');
-    expect(run).toContain('reindex — Regenera el indice de busqueda del destino');
-    expect(run).toContain('dry-run');
-    expect(run).not.toContain('\n');
+    const runDetails = run.details.join(' | ');
+    expect(runDetails).toContain('copy-content — Copia el content store del origen al destino');
+    expect(runDetails).toContain('reindex — Regenera el indice de busqueda del destino');
+    expect(runDetails).toContain('dry-run');
 
     const decision = decide(
       { name: 'migrator_target', arguments: { project: '/p.yaml' } },
@@ -90,8 +92,10 @@ describe('politica de seguridad', () => {
       'Prepara el DESTINO para la migracion.',
     );
     expect(decision.kind).toBe('ask');
-    expect((decision as { reason: string }).reason).toContain('Prepara el DESTINO');
-    expect((decision as { reason: string }).reason).toContain('/p.yaml');
+    const ask = decision as { title?: string; details?: string[]; body?: string };
+    expect(ask.title).toContain('Prepara el DESTINO');
+    expect((ask.details ?? []).join(' ')).toContain('/p.yaml');
+    expect(ask.body).toContain('ORIGEN');
   });
 
   it('el guard bloquea escritura sobre el origen', () => {

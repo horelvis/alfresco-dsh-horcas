@@ -59,7 +59,14 @@ interface ToolDefinitionLike {
 
 interface AskDecision {
   kind: 'ask';
+  /** Linea unica de respaldo (para arneses/UI sin motivo estructurado). */
   reason: string;
+  /** Titular corto de la decision. */
+  title?: string;
+  /** Detalles en lista (un aspecto por entrada). */
+  details?: string[];
+  /** Texto largo opcional. */
+  body?: string;
 }
 interface DenyDecision {
   kind: 'deny';
@@ -119,34 +126,42 @@ export interface SecurityContext {
 
 const isWrite = (name: string): boolean => (WRITE_TOOLS as readonly string[]).includes(name);
 
+/** Motivo de aprobacion: titular + detalles + cuerpo, y una linea unica de respaldo. */
+export interface WriteReason {
+  reason: string;
+  title: string;
+  details: string[];
+  body?: string;
+}
+
 /**
- * Motivo de aprobacion descriptivo. Reutiliza la **descripcion de la propia tool** (registro del arnes)
- * y, para `run_steps`, la **descripcion de cada paso** del catalogo: sin textos hardcodeados.
+ * Construye el motivo reutilizando la **descripcion de la propia tool** (registro del arnes) y, para
+ * `run_steps`, la **descripcion de cada paso** del catalogo: sin textos hardcodeados.
  */
-export function writeReason(name: string, args: unknown, toolDescription?: string): string {
+export function writeReason(name: string, args: unknown, toolDescription?: string): WriteReason {
   const a = (args ?? {}) as Record<string, unknown>;
-  const parts: string[] = [];
   const clean = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.]\s*$/, '');
-  const head = toolDescription ? clean(toolDescription) : `La tool ${name} puede escribir en el DESTINO`;
-  parts.push(`${head}.`);
-  if (a.project) parts.push(`Proyecto: ${String(a.project)}`);
+  const title = toolDescription ? clean(toolDescription) : `La tool ${name} puede escribir en el DESTINO`;
+  const details: string[] = [];
+  if (a.project) details.push(`Proyecto: ${String(a.project)}`);
   const dryRun = a.execute !== true;
+  const mode = dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)';
   if (name === 'migrator_run_steps' && Array.isArray(a.steps)) {
-    const pasos = (a.steps as unknown[])
-      .map((step) => {
-        const id = String(step);
-        return `${id} — ${clean(stepById(id)?.description ?? 'paso')}`;
-      })
-      .join('; ');
-    parts.push(`Pasos (${dryRun ? 'dry-run, no ejecuta nada' : 'EXECUTE, escribe en el DESTINO'}): ${pasos}`);
+    details.push(`Modo: ${mode}`);
+    for (const step of a.steps as unknown[]) {
+      const id = String(step);
+      details.push(`${id} — ${clean(stepById(id)?.description ?? 'paso')}`);
+    }
   } else if ('execute' in a) {
-    parts.push(`Modo: ${dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)'}`);
+    details.push(`Modo: ${mode}`);
   }
-  if (a.delta === true) parts.push('Copia incremental');
-  if (a.resume === true) parts.push('Reanuda (omite pasos ya OK)');
-  if (a.out) parts.push(`Salida: ${String(a.out)}`);
-  if (name !== 'migrator_wizard') parts.push('El ORIGEN no se modifica.');
-  return parts.join(' · ');
+  if (a.delta === true) details.push('Copia incremental');
+  if (a.resume === true) details.push('Reanuda (omite pasos ya OK)');
+  if (a.out) details.push(`Salida: ${String(a.out)}`);
+  const body = name === 'migrator_wizard' ? undefined : 'El ORIGEN no se modifica.';
+  const parts = [`${title}.`, ...details];
+  if (body) parts.push(body);
+  return { reason: parts.join(' · '), title, details, body };
 }
 
 /** Decide la politica de una llamada del migrador (exportada para tests). */
@@ -163,7 +178,14 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}, toolDescript
           reason: `Modo solo-lectura: '${name}' escribe en el DESTINO. Activa MIGRATOR_MODE=write para permitirlo.`,
         };
       }
-      return { kind: 'ask', reason: writeReason(name, exec.arguments, toolDescription) };
+      const prompt = writeReason(name, exec.arguments, toolDescription);
+      return {
+        kind: 'ask',
+        reason: prompt.reason,
+        title: prompt.title,
+        details: prompt.details,
+        ...(prompt.body !== undefined ? { body: prompt.body } : {}),
+      };
     }
     return { kind: 'allow' };
   }
