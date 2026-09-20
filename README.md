@@ -77,30 +77,84 @@ desde ese punto** (`resumeFrom`); cada intento queda registrado.
 La experiencia se guarda en `.migrator/experience.jsonl` (una campaña por proyecto+stage, con su historial
 de intentos); complementa la memoria conversacional del arnés y permite reanudar sin repetir lo ya hecho.
 
-## Seguridad (encapsulada en el arnés)
-- `tools/pre-execute`: allow para read-only, `ask` para escritura, deny para tools desconocidas del plugin.
-- `ctx.tools.guard()`: guard monotónico que bloquea cualquier escritura que apunte al origen.
-- **Aprobación real** (`approval/request`): el plugin instala un *answerer* configurable por
-  `MIGRATOR_APPROVAL`:
-  - `deny` (defecto) — rechaza toda escritura (fail-closed);
-  - `allowlist` — permite solo las tools de `MIGRATOR_APPROVAL_ALLOW` (coma-separadas);
-  - `interactive` — pregunta por stdin si hay TTY; sin TTY (perfil web) delega en la UI del arnés;
-  - `allow` — concede todo (solo entornos de confianza/CI).
+## Guardrails de seguridad (todos)
+La seguridad **no depende del prompt**: está impuesta en código determinista. Resumen, por mecanismo:
 
-  Sin answerer el arnés falla en cerrado. Verificado end-to-end: `rejected` con allowlist sin la tool y
-  `allowed-once` + ejecución real del paso con la tool permitida.
+| # | Guardrail | Qué impone | Dónde | Config |
+|---|---|---|---|---|
+| 1 | **Origen inmutable** | El ORIGEN nunca se escribe | `infra/pg.ts` (SELECT-only), `security/policy.ts` (`guardReason`), `domain/guards.ts` (`requireDistinctTarget`) | — |
+| 2 | **Solo-lectura por defecto** | Las tools de **escritura** del migrador se **deniegan** | `security/policy.ts` (`readOnly`) | `MIGRATOR_MODE=readonly\|write` |
+| 3 | **Aprobación one-shot** | Escrituras (en `write`) requieren aprobación; fail-closed | `approval.ts` (`approval/request`) | `MIGRATOR_APPROVAL` |
+| 4 | **Guardrail solo-migración** | Tools ajenas por capacidad: lectura/orquestación sí; ejecución/mutación/web no | `security/policy.ts` (`GUARDRAIL_ALLOW`) | `MIGRATOR_GUARDRAIL`, `MIGRATOR_GUARDRAIL_ALLOW` |
+| 5 | **Rutas de versión estrictas** | Rechaza saltos `UNSUPPORTED`; avisa hops intermedios y `REQUIRES_VALIDATION` | `domain/upgrade-paths.ts` | — |
+| 6 | **Guardas de almacenamiento (NAS/SAN)** | Mismo backing store → BLOCKER (aborta la copia); no demostrable → confirmación humana | `domain/mounts.ts`, `steps.ts` | `MIGRATOR_SKIP_MOUNT_GUARD` |
+| 7 | **Ensayo → PROD** | PROD exige ensayo validado; drift `BLOCKER` bloquea | `tools/write.ts`, `tools/execution.ts`, `domain/experience.ts` | — |
+| 8 | **Política de coherencia** | `FAIL_ON_DANGLING` bloquea; `WARN`/`REPAIR` no | `tools/coherence.ts`, `domain/coherence.ts` | `migration.coherence.policy` |
+| 9 | **Reviewer LLM** | Anonimización reversible; ante duda **ABSTAIN** (nunca aprueba solo) | `domain/reviewer.ts`, `domain/privacy.ts` | `MIGRATOR_AI_ANONYMIZATION` |
+| 10 | **Secretos** | Compose sin secretos embebidos; `.env` ignorado por git | `domain/provision.ts`, `.gitignore` | — |
 
-  **Solo concesiones one-shot.** El vocabulario del arnés es cerrado (`allowed-once | rejected |
-  cancelled | unavailable`) y `allowed-once` es la única concesión; no existe "permitir siempre". El
-  plugin lo garantiza (`assertOneShot`) y audita cada decisión en `.migrator/approvals.jsonl`.
-  La durabilidad por tool vive en la config (`allowlist`/`allow`), no en un grant de sesión.
+### 1. Origen inmutable
+- Todo acceso a PostgreSQL pasa por `selectOnly()` (solo `SELECT`/`WITH`).
+- Guard monotónico (`ctx.tools.guard`): bloquea cualquier tool de escritura que nombre el origen.
+- `requireDistinctTarget`: si destino y origen comparten **BD** o **content store** → `BLOCKER` (se aborta).
 
-  **Sin autorizaciones heredadas en cadena (con matices).** `allowed-once` es one-shot y está atado a
-  la llamada, así que en `interactive`/`web` un subagente **no** se bloquea (aprobar ese borrado concreto
-  es correcto). En cambio `allowlist`/`allow` aprueban un **nombre de tool**, no una acción, y un
-  subagente heredaría esa concesión amplia: por eso ahí se rechazan las tools de **escritura** del
-  migrador pedidas por agentes delegados (`parentAgent`/`meta.origin='subagent'`/`delegationDepth>0`).
-  Las read-only nunca se bloquean, y las tools ajenas siempre se delegan.
+### 2. Solo-lectura por defecto (`MIGRATOR_MODE`)
+Por defecto `readonly`: `migrator_target`, `migrator_run_steps`, `migrator_backup`, `migrator_reindex`,
+`migrator_provision`, `migrator_copy_content` y `migrator_wizard` devuelven **`deny`** (aunque el modelo
+insista). Para el ensayo/cutover real: `MIGRATOR_MODE=write` (y entonces aplica la aprobación del punto 3).
+
+### 3. Aprobación real (`approval/request`)
+Answerer configurable por `MIGRATOR_APPROVAL` (solo relevante con `MIGRATOR_MODE=write`):
+- `deny` (defecto) — rechaza toda escritura (fail-closed);
+- `allowlist` — permite solo las tools de `MIGRATOR_APPROVAL_ALLOW` (coma-separadas);
+- `interactive` — pregunta por stdin si hay TTY; sin TTY (perfil web) delega en la UI del arnés;
+- `allow` — concede todo (solo entornos de confianza/CI).
+
+Solo concesiones **one-shot** (vocabulario cerrado `allowed-once | rejected | cancelled | unavailable`;
+no existe "permitir siempre"): lo garantiza `assertOneShot` y cada decisión se audita en
+`.migrator/approvals.jsonl`. Sin answerer el arnés falla en cerrado.
+
+**Sin autorizaciones heredadas (con matices).** `allowed-once` está atado a la llamada, así que en
+`interactive`/`web` un subagente **no** se bloquea. En cambio `allowlist`/`allow` aprueban un **nombre de
+tool**, y un subagente heredaría esa concesión amplia: por eso ahí se rechazan las tools de **escritura**
+del migrador pedidas por agentes delegados (`parentAgent`/`meta.origin='subagent'`/`delegationDepth>0`).
+Las read-only nunca se bloquean.
+
+### 4. Guardrail solo-migración (`MIGRATOR_GUARDRAIL`)
+Activo por defecto. Las tools **ajenas** al plugin se deciden por **capacidad**:
+- **Permitidas**: lectura/inspección (`read`, `read_image`, `glob`, `grep`), orquestación/multiagente
+  (`subagent`, `send_message`, `interrupt_agent`, `list_subagent_models`, `todo_write`, `skill`,
+  `present`, `job_list`/`job_output`/`job_kill`, `create_goal`/`get_goal`/`update_goal`) y preguntas al
+  humano (`ask_user_question`).
+- **Denegadas**: ejecución y mutación (`bash`, `pwsh`, `write`, `edit`, `str_replace_editor`, `web_fetch`,
+  `web_search`) y cualquier tool desconocida.
+
+Ampliable con `MIGRATOR_GUARDRAIL_ALLOW=bash,read`; desactivable con `MIGRATOR_GUARDRAIL=false`.
+
+### 5. Rutas de versión estrictas
+`requireSupportedUpgradePath(from, to)` **lanza** si no hay ruta o si algún hop es `UNSUPPORTED` (nunca se
+salta de versión); `upgradePathWarnings` avisa de los saltos intermedios obligatorios y de
+`REQUIRES_VALIDATION`. Se aplica en `migrator_target`, `migrator_run_steps` y `migrator_provision`.
+
+### 6. Guardas de almacenamiento (NAS/SAN)
+`migrator_mount_check` y `copy-content` detectan mismo *backing store* (mismo export NFS/CIFS o mismo
+LUN): **BLOCKER** y la copia **aborta**. Lo que no es demostrable desde el guest (discos virtuales/SAN)
+se marca `requiresHumanConfirmation=true` y el agente **pregunta** (`ask_user_question`), no lo inventa.
+
+### 7. Ensayo → PROD
+`stage: prod` exige un **ensayo (clone/TEST) validado**; el drift respecto al ensayo con severidad
+`BLOCKER` (versión distinta, esquema con defecto, CDC activo) **bloquea** la ejecución.
+
+### 8. Política de coherencia
+`migration.coherence.policy`: `FAIL_ON_DANGLING` (default) marca `blocked=true` con colgantes;
+`WARN`/`REPAIR` permiten continuar dejándolo documentado.
+
+### 9. Reviewer LLM
+Los artefactos hacia el LLM se **anonimizan** de forma reversible (el mapeo nunca sale del host) y, si el
+LLM falla o responde algo no parseable, el veredicto es **`ABSTAIN`** (nunca un "apruebo" implícito).
+
+### 10. Secretos
+El compose generado no embebe secretos (variables de entorno); `.env` está en `.gitignore`.
 
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.
@@ -115,7 +169,7 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
 
 ## dsh y el plugin (no duplicar)
 dsh ya aporta el loop, la memoria de sesión, la aprobación y su UI, los presets de permisos, las skills,
-las tools nativas (bash/fs/`ask_user`/todo/subagent/web…) y el registro de plugins por perfil. El plugin
+las tools nativas (bash/fs/`ask_user_question`/todo/subagent/web…) y el registro de plugins por perfil. El plugin
 solo añade **dominio** y no reimplementa nada de eso:
 - Se registra como **bundle** del perfil (`package.json` → `dsh.bundle.patch` → `cordis.yml`) con
   `dsh plugin --profile <n> add <repo>`, o como overlay suelto con `dsh --patch ./cordis.yml`.
