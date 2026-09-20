@@ -69,8 +69,10 @@ describe('politica de seguridad', () => {
       /gadex\.yaml.*EXECUTE/s,
     );
     const run = writeReason('migrator_run_steps', { project: 'x', steps: ['copy-content', 'reindex'], execute: false });
-    expect(run).toContain('copy-content, reindex');
+    expect(run).toContain('copy-content (copia del content store');
+    expect(run).toContain('reindex (regenera el indice');
     expect(run).toContain('dry-run');
+    expect(run).toContain('NO ejecuta nada');
     const decision = decide({ name: 'migrator_target', arguments: { project: '/p.yaml' } });
     expect(decision.kind).toBe('ask');
     expect((decision as { reason: string }).reason).toContain('/p.yaml');
