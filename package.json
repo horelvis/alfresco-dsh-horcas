@@ -27,7 +27,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format esm --dts",
+    "build": "rm -rf dist && tsdown src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:live": "vitest run live"
