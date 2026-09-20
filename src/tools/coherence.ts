@@ -1,7 +1,7 @@
 /** Tools de coherencia y forense de colgantes (read-only). Cierran el hueco detectado: explicar que nodo hay detras. */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { checkCoherence, explainMissing } from '../domain/coherence.js';
+import { checkCoherence, coherenceBlocked, explainMissing } from '../domain/coherence.js';
 import { loadProject } from '../domain/project-config.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -33,15 +33,23 @@ export function registerCoherenceTools(ctx: Context): void {
             sizeMismatch: { type: 'number' },
             verdict: { type: 'string' },
             samples: { type: 'array', items: { type: 'string' } },
+            policy: { type: 'string' },
+            blocked: { type: 'boolean' },
           },
         },
         render: (_args, value) => {
-          const v = value as { refs: number; storeObjects: number; dangling: number; orphans: number; sizeMismatch: number; verdict: string };
-          return text(`refs=${v.refs} storeObjects=${v.storeObjects} dangling=${v.dangling} orphans=${v.orphans} sizeMismatch=${v.sizeMismatch} verdict=${v.verdict}`);
+          const v = value as { refs: number; storeObjects: number; dangling: number; orphans: number; sizeMismatch: number; verdict: string; policy: string; blocked: boolean };
+          return text(
+            `refs=${v.refs} storeObjects=${v.storeObjects} dangling=${v.dangling} orphans=${v.orphans} ` +
+              `sizeMismatch=${v.sizeMismatch} verdict=${v.verdict} policy=${v.policy} bloqueado=${v.blocked}`,
+          );
         },
       },
       async execute(args) {
-        return checkCoherence(await storeRoot(args.project));
+        const project = await loadProject(args.project);
+        const report = await checkCoherence(await storeRoot(args.project));
+        const policy = project.migration.coherencePolicy ?? 'FAIL_ON_DANGLING';
+        return { ...report, policy, blocked: coherenceBlocked(policy, report.dangling) };
       },
     }),
   );

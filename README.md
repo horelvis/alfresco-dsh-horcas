@@ -18,6 +18,7 @@ Read-only (permitidas por defecto):
 - `migrator_rehearsal_record` — registra la experiencia de una migración de prueba (clone/TEST).
 - `migrator_experience_latest` — consulta el último ensayo registrado.
 - `migrator_environment_parity` — drift del origen actual respecto al ensayo (BLOCKER impide PROD).
+- `migrator_verify_target` — paridad origen→destino: conteos JDBC (nodos/refs) y content store (ficheros/bytes).
 - `migrator_coherence` — coherencia DB↔content store (refs/dangling/orphans/**sizeMismatch**/verdict).
 - `migrator_dangling_explain` — para cada colgante, nodo (vivo/versión/papelera), tipo, nombre y ruta.
 - `migrator_strategy` — estrategia recomendada de contenido/BD/índice (C1–C5/D1–D2/I1–I2).
@@ -83,22 +84,44 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
 - `upgrade-paths.yaml`: **matriz de rutas de upgrade y gates** (datos, no código).
 - `estimation.yaml`: parámetros/umbrales del estimador.
 - `strategy.yaml`: umbrales del selector de estrategia.
+- `memory.yaml`: reparto de memoria del stack destino (Alfresco = fracción de la RAM disponible en el host/Docker, con suelo y techo).
 - `recommendations.yaml`, `project.schema.json`, `projects/example.yaml`.
 
 > El conocimiento vive en **datos y skills**, no hardcodeado. Cambiar la matriz de upgrade o los
 > umbrales no requiere tocar código: se edita el YAML.
 
+## Instalación y lanzamiento
+```sh
+./install.sh    # dependencias + build + enlaza el lanzador `migrator` en ~/.local/bin
+cp .env.example .env   # (install.sh lo crea si no existe) y rellena credenciales y modelo
+
+./migrator.sh "analiza en solo lectura la migracion de data/projects/example.yaml"
+migrator "analiza en solo lectura la migracion de data/projects/example.yaml"   # si ~/.local/bin esta en el PATH
+```
+- `migrator.sh` carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza
+  `dsh --profile headless --patch ./cordis.yml`.
+- Aprobación de escrituras por defecto **`deny`** (fail-closed): el agente solo lee. Para permitir
+  escrituras con aprobación: `MIGRATOR_APPROVAL=interactive|allowlist|allow`.
+- Requiere `dsh` y Node ≥ 20. `DSH_PROFILE` cambia el perfil de dsh (por defecto `headless`).
+
 ## Desarrollo
 ```sh
 npm install
 npm run typecheck
-npm test
+npm test          # unitarios (los live se omiten sin entorno)
+npm run test:live # tests contra el origen real (requiere MIGRATOR_SRC_DB_*)
+                  # el dry-run del pipeline exige MIGRATOR_LIVE_PIPELINE=true (no escribe nada)
 npm run build
 dsh --profile web --patch ./cordis.yml
 ```
 
 Variables de entorno del origen: `MIGRATOR_SRC_DB_URL` (o `MIGRATOR_SRC_DB_HOST/PORT/NAME/USER/PASSWORD`),
 `MIGRATOR_SRC_VERSION`. `MIGRATOR_DATA_DIR` sobreescribe el directorio `data/`.
+
+Content store: en `contentStore` puedes declarar `path` (ruta del host) o `volume` (volumen Docker);
+con `volume`, el plugin resuelve su mountpoint real con `docker volume inspect` en el host correspondiente
+y trata `path` como subruta dentro del volumen. El origen (backup/copia) se ejecuta en el host local;
+la escritura va al host destino por SSH.
 
 Idioma: el agente responde en **español por defecto** (sección de system prompt configurable con
 `MIGRATOR_LANG=es|en|pt|…`), manteniendo intactos los identificadores técnicos.
@@ -107,8 +130,11 @@ Avisos proactivos: `migrator_run_steps` avisa si es el **primer intento** (sin e
 hay un intento previo fallido y conviene `resume=true`.
 
 ## Estado
-Fase 1: tools read-only + seguridad + datos de dominio. Fase 2: ejecución del pipeline de destino
-(provisión, copia, restore, reindex) con aprobación y guardas.
+- **Fase 1 (completa)**: tools read-only, seguridad (origen inmutable + aprobación) y datos de dominio.
+- **Fase 2 (completa)**: ejecución en destino (provisión, backup, copia, restore, schema-upgrade, reindex)
+  vía `migrator_run_steps` con aprobación y guardas, y verificación de paridad (`migrator_verify_target`).
+- **Pendiente operativo**: ejecutar la campaña de ensayo end-to-end sobre el entorno real (ver flujo
+  ensayo → producción) y validar la paridad antes del corte.
 
 ## Principio de diseño: hechos en el código, juicio en el agente
 - **Tools = hechos**: parseo (`/proc/mounts`, `lsblk`, JDBC, hashes), igualdad demostrable, validación de

@@ -6,8 +6,8 @@ set answer [lindex $argv 0]
 set task [lrange $argv 1 end]
 
 set env(MIGRATOR_APPROVAL) "interactive"
-set env(DEEPSEEK_API_KEY) $env(SPRING_AI_OPENAI_API_KEY)
-set env(DEEPSEEK_BASE_URL) $env(SPRING_AI_OPENAI_BASE_URL)
+set env(DEEPSEEK_API_KEY) $env(OPENAI_API_KEY)
+set env(DEEPSEEK_BASE_URL) $env(OPENAI_BASE_URL)
 
 spawn dsh --profile headless --patch ./cordis.yml $task
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderCompose, shouldSkipProvision } from '../src/domain/provision.js';
+import { computeAlfrescoMemory, type MemoryData } from '../src/domain/memory.js';
 import { evaluateUpgradeLog, waitForUpgrade } from '../src/domain/schema-upgrade.js';
+
+const memoryData: MemoryData = { reservedGiB: 5, alfrescoShare: 0.5, minGiB: 2.5, maxGiB: 12, jvmMinPercent: 50, jvmMaxPercent: 75 };
 
 const request = {
   projectName: 'demo',
@@ -26,6 +29,13 @@ describe('compose', () => {
     const yaml = renderCompose({ ...request, edition: 'EE', withShare: true });
     expect(yaml).toContain('quay.io/alfresco/alfresco-content-repository:26.2');
     expect(yaml).toContain('alfresco/alfresco-share:26.2');
+  });
+
+  it('usa la memoria calculada por RAM disponible cuando se aporta', () => {
+    const memory = computeAlfrescoMemory(16 * 1024 ** 3, memoryData);
+    const yaml = renderCompose({ ...request, memory });
+    expect(yaml).toContain('mem_limit: 5632m');
+    expect(yaml).toContain('MaxRAMPercentage=75');
   });
 
   it('Solr no se despliega en destino', () => {

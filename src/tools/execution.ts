@@ -6,6 +6,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
+import { requireSupportedUpgradePath, upgradePathWarnings } from '../domain/upgrade-paths.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
 import { loadCheckpoints } from '../domain/checkpoints.js';
@@ -86,6 +87,9 @@ export function registerExecutionTools(ctx: Context): void {
         const runId = args.runId ?? newRunId(project.project);
         const warnings: string[] = [];
 
+        // Regla dura: nunca un salto de version no soportado; avisa de los saltos intermedios.
+        warnings.push(...upgradePathWarnings(requireSupportedUpgradePath(project.source.version, project.target.version)));
+
         // Experiencia previa de la campana (project+stage): primer intento o reanudacion pendiente.
         const previous = (await loadExperiences(state, project.project)).find(
           (r) => r.stage === project.stage,
@@ -112,7 +116,14 @@ export function registerExecutionTools(ctx: Context): void {
           }
         }
         const report = await runSteps(
-          { project, destination: destinationHost(project), state, runId, dryRun: !execute },
+          {
+            project,
+            destination: destinationHost(project),
+            source: { name: 'local' },
+            state,
+            runId,
+            dryRun: !execute,
+          },
           args.steps,
           { resume: args.resume === true, dryRun: !execute },
         );

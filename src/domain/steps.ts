@@ -11,10 +11,13 @@ import type { HostRef } from '../infra/exec.js';
 import { runShell, substitute, type ExecResult } from '../infra/exec.js';
 import type { ProjectConfig } from '../domain/project-config.js';
 import { planContentCopy } from './content-copy.js';
+import { resolveContentStorePath } from './content-store.js';
 
 export interface StepContext {
   project: ProjectConfig;
   destination: HostRef;
+  /** Host que toca el ORIGEN (JShell/JDBC local por defecto); el destino va por `destination`. */
+  source?: HostRef;
   state: string;
   runId: string;
   dryRun: boolean;
@@ -76,7 +79,7 @@ const backupSourceDb: StepDefinition = {
       return skipped('backup-source-db', `dry-run: dump a ${out}`);
     }
     if (override) {
-      return requireResult('backup-source-db', await runShell(ctx.destination, substitute(override, { out })));
+      return requireResult('backup-source-db', await runShell(ctx.source ?? { name: 'local' }, substitute(override, { out })));
     }
     return skipped('backup-source-db', 'sin MIGRATOR_DB_DUMP_CMD (BD interna al contenedor)');
   },
@@ -88,10 +91,21 @@ const copyContent: StepDefinition = {
   description: 'Copia el content store del origen al destino (rsync/S3/Azure; delta opcional).',
   writes: true,
   async run(ctx, params) {
-    const source = String(params.sourcePath ?? ctx.project.source.contentStore?.path ?? '');
-    const target = String(params.targetPath ?? ctx.project.target.contentStore?.path ?? '');
+    const sourceRef = params.sourcePath ? { path: String(params.sourcePath) } : ctx.project.source.contentStore;
+    const targetRef = params.targetPath ? { path: String(params.targetPath) } : ctx.project.target.contentStore;
+    const host = ctx.source ?? { name: 'local' };
+    const source = await resolveContentStorePath(sourceRef, host);
+
+    // dry-run: no resolvemos el mountpoint del destino (evita depender del host) ni ejecutamos.
+    if (ctx.dryRun) {
+      const label = targetRef?.volume
+        ? `${targetRef.volume}${targetRef.path ? `/${targetRef.path}` : ''}`
+        : targetRef?.path ?? '';
+      return skipped('copy-content', `dry-run: ${source ?? ''} -> ${label}`);
+    }
+    const target = await resolveContentStorePath(targetRef, ctx.destination);
     if (!source || !target) {
-      return fail('copy-content', 'faltan rutas de content store');
+      return fail('copy-content', 'faltan rutas de content store (path o volume)');
     }
     // Guarda NAS/SAN: si origen y destino comparten backing store remoto, la copia se corrompe.
     if (process.env.MIGRATOR_SKIP_MOUNT_GUARD !== 'true') {
@@ -100,19 +114,20 @@ const copyContent: StepDefinition = {
         return fail('copy-content', guard);
       }
     }
-    if (ctx.dryRun) {
-      return skipped('copy-content', `dry-run: ${source} -> ${target}`);
-    }
     const override = process.env.MIGRATOR_CONTENT_COPY_CMD;
     if (override) {
-      return requireResult('copy-content', await runShell(ctx.destination, substitute(override, { source, target })));
+      return requireResult('copy-content', await runShell(host, substitute(override, { source, target })));
     }
+    const sshTarget =
+      ctx.destination.name !== 'local' && ctx.destination.host
+        ? `${ctx.destination.user ?? 'root'}@${ctx.destination.host}`
+        : undefined;
     const plan = planContentCopy(
       { type: 'FS', path: source },
       { type: 'FS', path: target },
-      { delta: params.delta === true },
+      { delta: params.delta === true, sshTarget, sshIdentity: ctx.destination.keyFile },
     );
-    return requireResult('copy-content', await runShell(ctx.destination, plan.command));
+    return requireResult('copy-content', await runShell(host, plan.command));
   },
 };
 

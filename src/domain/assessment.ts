@@ -61,7 +61,7 @@ export async function discoverRest(
   }
 }
 
-async function scanStore(root: string): Promise<{ files: number; bytes: number; maxBytes: number }> {
+export async function scanStore(root: string): Promise<{ files: number; bytes: number; maxBytes: number }> {
   let files = 0;
   let bytes = 0;
   let maxBytes = 0;

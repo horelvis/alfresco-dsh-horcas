@@ -30,7 +30,7 @@ export interface ProjectConfig {
     edition?: string;
     version: string;
     database?: ProjectDatabase;
-    contentStore?: { type?: string; path?: string; via?: string };
+    contentStore?: { type?: string; path?: string; via?: string; volume?: string };
     search?: { engine?: string };
   };
   target: {
@@ -38,7 +38,7 @@ export interface ProjectConfig {
     edition?: string;
     deployment?: string;
     database?: ProjectDatabase;
-    contentStore?: { type?: string; path?: string };
+    contentStore?: { type?: string; path?: string; volume?: string };
     search?: { engine?: string };
   };
   migration: {

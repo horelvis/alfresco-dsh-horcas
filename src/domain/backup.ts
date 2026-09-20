@@ -9,6 +9,7 @@ import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runShell, substitute, type ExecResult, type HostRef } from '../infra/exec.js';
 import { sha256File, writeManifest, verifyManifest, readManifest, type ManifestDiff } from './manifest.js';
+import { resolveContentStorePath } from './content-store.js';
 import type { ProjectConfig } from './project-config.js';
 
 export type BackupKind = 'DATABASE' | 'CONTENT_STORE' | 'CONFIG';
@@ -79,7 +80,8 @@ async function inventory(dir: string): Promise<{ files: number; bytes: number }>
 export interface BackupContext {
   project: ProjectConfig;
   backupDir: string;
-  destination: HostRef;
+  /** Host donde correr los comandos de backup: el ORIGEN (local por defecto), no el destino. */
+  host: HostRef;
   dryRun: boolean;
   /** Entorno inyectable (por defecto process.env); facilita tests. */
   env?: NodeJS.ProcessEnv;
@@ -113,7 +115,7 @@ async function database(ctx: BackupContext, env: NodeJS.ProcessEnv): Promise<Bac
     return planned('DATABASE', dump, 'sin MIGRATOR_DB_DUMP_CMD: backup de BD gestionado externamente');
   }
   await mkdir(path.dirname(dump), { recursive: true });
-  const result: ExecResult = await runShell(ctx.destination, substitute(override, { out: dump }));
+  const result: ExecResult = await runShell(ctx.host, substitute(override, { out: dump }));
   if (result.exitCode !== 0 || !(await nonEmptyFile(dump))) {
     throw new Error(`Dump de BD fallido (exit=${result.exitCode}): ${result.stderr}`);
   }
@@ -122,8 +124,9 @@ async function database(ctx: BackupContext, env: NodeJS.ProcessEnv): Promise<Bac
 
 async function contentStore(ctx: BackupContext, env: NodeJS.ProcessEnv): Promise<BackupArtifact> {
   const store = ctx.project.source.contentStore;
-  if (!store?.path) {
-    return planned('CONTENT_STORE', '', 'el proyecto no define source.contentStore.path');
+  const storePath = await resolveContentStorePath(store, ctx.host);
+  if (!storePath) {
+    return planned('CONTENT_STORE', '', 'el proyecto no define source.contentStore.path ni volume');
   }
   const dir = path.join(ctx.backupDir, 'contentstore');
   if (await nonEmptyDir(dir)) {
@@ -132,10 +135,10 @@ async function contentStore(ctx: BackupContext, env: NodeJS.ProcessEnv): Promise
   if (ctx.dryRun) return planned('CONTENT_STORE', dir, 'copia del content store FS a crear');
   const override = env.MIGRATOR_CONTENT_COPY_CMD;
   const command = override
-    ? substitute(override, { source: store.path, target: dir })
-    : `rsync -a --info=stats2 "${store.path}/" "${dir}/"`;
+    ? substitute(override, { source: storePath, target: dir })
+    : `rsync -a --info=stats2 "${storePath}/" "${dir}/"`;
   await mkdir(dir, { recursive: true });
-  const result = await runShell(ctx.destination, command);
+  const result = await runShell(ctx.host, command);
   if (result.exitCode !== 0 || !(await nonEmptyDir(dir))) {
     throw new Error(`Copia del content store fallida (exit=${result.exitCode}): ${result.stderr}`);
   }

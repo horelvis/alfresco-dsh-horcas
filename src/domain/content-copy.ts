@@ -44,6 +44,8 @@ export interface CopyPlanOptions {
   checksum?: boolean;
   /** Host SSH del origen/destino para rsync -e ssh. */
   sshTarget?: string;
+  /** Identidad SSH (clave) para rsync -e ssh. */
+  sshIdentity?: string;
 }
 
 /** Genera el plan de copia (un comando shell). */
@@ -59,7 +61,7 @@ export function planContentCopy(
     if (delta) args.push('--delete');
     if (options.checksum) args.push('--checksum');
     if (options.bandwidthKbps && options.bandwidthKbps > 0) args.push(`--bwlimit=${options.bandwidthKbps}`);
-    if (options.sshTarget) args.push('-e', `ssh -o BatchMode=yes`);
+    if (options.sshTarget) args.push('-e', `ssh -o BatchMode=yes${options.sshIdentity ? ` -i ${options.sshIdentity}` : ''}`);
     args.push(`${requirePath(source, 'origen')}/`, options.sshTarget ? `${options.sshTarget}:${requirePath(target, 'destino')}/` : `${requirePath(target, 'destino')}/`);
     return { via: 'RSYNC', delta, command: args.map((a) => (a.includes(' ') ? `"${a}"` : a)).join(' ') };
   }

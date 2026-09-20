@@ -63,7 +63,7 @@ describe('backup', () => {
   it('dry-run planifica sin escribir', async () => {
     const store = await tempStore();
     const backupDir = await mkdtemp(path.join(os.tmpdir(), 'bk-'));
-    const result = await runBackup({ project: project(store), backupDir, destination: { name: 'local' }, dryRun: true, env: {} });
+    const result = await runBackup({ project: project(store), backupDir, host: { name: 'local' }, dryRun: true, env: {} });
     expect(result.originRetained).toBe(true);
     expect(result.artifacts.find((a) => a.kind === 'CONTENT_STORE')?.note).toBeTruthy();
     await rm(store, { recursive: true, force: true });
@@ -73,7 +73,7 @@ describe('backup', () => {
   it('copia el store con rsync y genera manifiesto + snapshot de config', async () => {
     const store = await tempStore();
     const backupDir = await mkdtemp(path.join(os.tmpdir(), 'bk-'));
-    const result = await runBackup({ project: project(store), backupDir, destination: { name: 'local' }, dryRun: false, env: {} });
+    const result = await runBackup({ project: project(store), backupDir, host: { name: 'local' }, dryRun: false, env: {} });
 
     const content = result.artifacts.find((a) => a.kind === 'CONTENT_STORE');
     expect(content?.fileCount).toBe(2);

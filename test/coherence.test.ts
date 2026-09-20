@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diffCoherence } from '../src/domain/coherence.js';
+import { coherenceBlocked, diffCoherence } from '../src/domain/coherence.js';
 
 const m = (entries: Array<[string, number]>): Map<string, number> => new Map(entries);
 
@@ -38,5 +38,18 @@ describe('diffCoherence (dangling/orphans/sizeMismatch)', () => {
     const diff = diffCoherence(m([['a.bin', 100]]), m([['a.bin', -1]]));
     expect(diff.sizeMismatch).toHaveLength(0);
     expect(diff.verdict).toBe('PASS');
+  });
+});
+
+describe('coherenceBlocked (aplicacion de la policy)', () => {
+  it('FAIL_ON_DANGLING (y por defecto) bloquea solo con dangling', () => {
+    expect(coherenceBlocked('FAIL_ON_DANGLING', 1)).toBe(true);
+    expect(coherenceBlocked(undefined, 1)).toBe(true);
+    expect(coherenceBlocked('FAIL_ON_DANGLING', 0)).toBe(false);
+  });
+
+  it('WARN / REPAIR nunca bloquean', () => {
+    expect(coherenceBlocked('WARN', 3)).toBe(false);
+    expect(coherenceBlocked('REPAIR', 3)).toBe(false);
   });
 });

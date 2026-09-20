@@ -1,0 +1,19 @@
+# Reparto de memoria del stack de destino (DATOS, no codigo).
+# El repositorio Alfresco recibe una fraccion de la RAM disponible en el host/Docker,
+# con suelo y techo; el resto queda para postgres/activemq/search/transform/UIs.
+
+schemaVersion: 1
+
+# RAM reservada para el resto de servicios del stack (GiB).
+reservedGiB: 5
+
+# Fraccion de la RAM disponible (tras la reserva) que toma el repositorio Alfresco.
+alfrescoShare: 0.5
+
+# Suelo y techo del limite del contenedor Alfresco (GiB).
+minGiB: 2.5
+maxGiB: 12
+
+# Porcentajes de heap JVM sobre el limite del contenedor.
+jvmMinPercent: 50
+jvmMaxPercent: 75

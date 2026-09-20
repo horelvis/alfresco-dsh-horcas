@@ -40,6 +40,8 @@ export function assertOneShot(outcome: ApprovalOutcome): ApprovalOutcome {
 export interface ApprovalOptions {
   mode: ApprovalMode;
   allow: string[];
+  /** Directorio de estado para la auditoria (defecto: MIGRATOR_STATE o .migrator). */
+  state?: string;
 }
 
 export interface ApprovalRequest {
@@ -148,11 +150,11 @@ export function approvalAuditFile(state: string): string {
   return path.join(state, 'approvals.jsonl');
 }
 
-async function audit(entry: ApprovalAuditEntry): Promise<void> {
-  const state = process.env.MIGRATOR_STATE ?? '.migrator';
+async function audit(entry: ApprovalAuditEntry, state?: string): Promise<void> {
+  const dir = state ?? process.env.MIGRATOR_STATE ?? '.migrator';
   try {
-    await mkdir(state, { recursive: true });
-    await appendFile(approvalAuditFile(state), JSON.stringify(entry) + '\n', 'utf8');
+    await mkdir(dir, { recursive: true });
+    await appendFile(approvalAuditFile(dir), JSON.stringify(entry) + '\n', 'utf8');
   } catch {
     // La auditoria nunca debe romper la aprobacion.
   }
@@ -175,7 +177,7 @@ export function installApproval(ctx: ApprovalContext, options: ApprovalOptions =
     }
     // Escritura heredada en modos no interactivos: se rechaza (la allowlist aprueba nombres, no acciones).
     if (blocksDelegatedWrite(request.toolName, request.agent, options.mode)) {
-      await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome: 'rejected' });
+      await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome: 'rejected' }, options.state);
       return 'rejected';
     }
     let outcome: ApprovalOutcome;
@@ -188,7 +190,7 @@ export function installApproval(ctx: ApprovalContext, options: ApprovalOptions =
     } else {
       outcome = decideApproval(request, options) ?? (await next());
     }
-    await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome });
+    await audit({ at: new Date().toISOString(), toolName: request.toolName, reason: request.reason, mode: options.mode, outcome }, options.state);
     return assertOneShot(outcome);
   });
 }

@@ -10,6 +10,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runShell, type ExecResult, type HostRef } from '../infra/exec.js';
+import { memLimitForCompose, type AlfrescoMemory } from './memory.js';
 import type { ProjectConfig } from './project-config.js';
 
 export interface ComposeRequest {
@@ -20,6 +21,8 @@ export interface ComposeRequest {
   database?: { engine?: string; host?: string; port?: number; name?: string; user?: string };
   search?: { engine?: string };
   withShare?: boolean;
+  /** Memoria calculada para el repositorio (si falta, se usa un minimo seguro). */
+  memory?: AlfrescoMemory;
 }
 
 const POSTGRES_IMAGE = 'postgres:15';
@@ -87,12 +90,13 @@ export function renderCompose(request: ComposeRequest): string {
   }
   lines.push('  alfresco:');
   lines.push(`    image: ${repositoryImage(request.edition, request.acsVersion)}`);
+  lines.push(`    mem_limit: ${request.memory ? memLimitForCompose(request.memory) : '2560m'}`);
   lines.push('    depends_on:');
   lines.push('      - postgres');
   lines.push('      - activemq');
   lines.push('      - search');
   lines.push('    environment:');
-  lines.push('      JAVA_OPTS: "-Xms1g -Xmx2g"');
+  lines.push(`      JAVA_OPTS: "${request.memory ? request.memory.javaOpts : '-Xms1g -Xmx2g'}"`);
   lines.push(`      DB_URL: ${jdbcUrl(db, 'postgres')}`);
   lines.push(`      DB_USERNAME: ${user}`);
   lines.push('      DB_PASSWORD: ${POSTGRES_PASSWORD}');
@@ -159,7 +163,12 @@ export async function provisionCompose(
   return { file, started: true, detail: result.stdout.trim() };
 }
 
-export function projectToComposeRequest(project: ProjectConfig, acsVersion: string, withShare = false): ComposeRequest {
+export function projectToComposeRequest(
+  project: ProjectConfig,
+  acsVersion: string,
+  withShare = false,
+  memory?: AlfrescoMemory,
+): ComposeRequest {
   return {
     projectName: project.project,
     acsVersion,
@@ -168,5 +177,6 @@ export function projectToComposeRequest(project: ProjectConfig, acsVersion: stri
     database: project.target.database,
     search: project.target.search,
     withShare,
+    memory,
   };
 }

@@ -8,6 +8,7 @@
   "properties": {
     "project": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,62}$" },
     "description": { "type": "string" },
+    "stage": { "enum": ["clone", "test", "prod"], "default": "test", "description": "PROD exige un ensayo (clone/TEST) validado." },
     "access": { "$ref": "#/$defs/access" },
     "source": { "$ref": "#/$defs/source" },
     "target": { "$ref": "#/$defs/target" },
@@ -111,7 +112,8 @@
       "additionalProperties": false,
       "properties": {
         "type": { "enum": ["FS", "S3", "Azure"] },
-        "path": { "type": "string" },
+        "path": { "type": "string", "description": "Ruta del host, o subruta relativa dentro del volumen si se usa `volume`." },
+        "volume": { "type": "string", "description": "Volumen Docker que contiene el content store; su mountpoint real se resuelve en el host." },
         "bucket": { "type": "string" },
         "container": { "type": "string" },
         "region": { "type": "string" },

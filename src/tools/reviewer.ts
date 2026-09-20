@@ -48,9 +48,9 @@ export function registerReviewerTools(ctx: Context): void {
           hops: hops.map((h) => ({ from: h.from, to: h.to, pathClass: h.pathClass })),
         });
 
-        const baseUrl = process.env.MIGRATOR_AI_BASE_URL ?? process.env.SPRING_AI_OPENAI_BASE_URL;
-        const apiKey = process.env.MIGRATOR_AI_API_KEY ?? process.env.SPRING_AI_OPENAI_API_KEY;
-        const model = process.env.MIGRATOR_AI_MODEL ?? process.env.SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL ?? 'llm';
+        const baseUrl = process.env.MIGRATOR_AI_BASE_URL ?? process.env.OPENAI_BASE_URL;
+        const apiKey = process.env.MIGRATOR_AI_API_KEY ?? process.env.OPENAI_API_KEY;
+        const model = process.env.MIGRATOR_AI_MODEL ?? process.env.OPENAI_CHAT_OPTIONS_MODEL ?? 'llm';
         const extraHeaders: Record<string, string> = {};
         if (process.env.MIGRATOR_AI_SESSION) extraHeaders['x-opencode-session'] = process.env.MIGRATOR_AI_SESSION;
         const client = baseUrl && apiKey ? openAiCompatibleClient(baseUrl, apiKey, model, extraHeaders) : undefined;

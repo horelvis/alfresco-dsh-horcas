@@ -7,17 +7,9 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
 import { runBackup } from '../domain/backup.js';
 import { stateDir } from '../domain/experience.js';
-import type { HostRef } from '../infra/exec.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 const json = <T>(value: T): never => JSON.parse(JSON.stringify(value)) as never;
-
-function destinationHost(project: Awaited<ReturnType<typeof loadProject>>): HostRef {
-  if (project.access.mode === 'local' || Object.keys(project.access.hosts).length === 0) return { name: 'local' };
-  const name = process.env.MIGRATOR_DST_HOST ?? 'dst-app';
-  const host = project.access.hosts[name];
-  return host ? { name, host: host.host, user: host.user, keyFile: host.keyFile } : { name: 'local' };
-}
 
 export function registerBackupTools(ctx: Context): void {
   ctx.tools.register(
@@ -56,7 +48,7 @@ export function registerBackupTools(ctx: Context): void {
         const result = await runBackup({
           project,
           backupDir,
-          destination: destinationHost(project),
+          host: { name: 'local' },
           dryRun: args.execute !== true,
         });
         return json(result);

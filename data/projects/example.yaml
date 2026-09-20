@@ -41,6 +41,10 @@ target:
     engine: postgresql
   contentStore:
     type: FS
+    # Si el destino guarda el store en un volumen Docker, usa `volume` (el plugin resuelve su
+    # mountpoint real en el host con `docker volume inspect`) y `path` como subruta del volumen:
+    #   volume: gadex-7.1.0_alfresco-content   # nombre real: `docker volume ls`
+    #   path: contentstore                     # dir.contentstore dentro de dir.root
     path: /alf_data-26/contentstore
   search:
     engine: opensearch
@@ -52,7 +56,8 @@ migration:
   parallelism: 4
   coherence:
     mode: full
-    policy: FAIL_ON_DANGLING
+    # exp.conf.zip (53MB) falto en el origen: se acepta documentado en lugar de bloquear el ensayo.
+    policy: WARN
 
 estimation:
   changeRatePerDay: 0.01

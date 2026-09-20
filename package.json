@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsdown src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:live": "vitest run live"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",

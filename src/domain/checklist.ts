@@ -82,7 +82,7 @@ export function buildChecklist(input: ChecklistInput): ChecklistItem[] {
   }
 
   items.push(item('PRE', 'Backup de BD verificado/creado', 'PENDING', 'ejecutar migrator_run_steps (backup-source-db)', DB_PATCH));
-  items.push(item('PRE', 'Backup del content store + manifest (SHA-256)', 'PENDING', 'pendiente de portar el backup de store', UPGRADE_PATHS));
+  items.push(item('PRE', 'Backup del content store + manifest (SHA-256)', 'PENDING', 'ejecutar migrator_backup', UPGRADE_PATHS));
   items.push(
     item('PRE', 'Esquema PostgreSQL con PK/unicidad completos (6 tablas criticas)', 'PENDING', 'ejecutar migrator_schema_check', DB_PATCH),
   );
@@ -91,7 +91,7 @@ export function buildChecklist(input: ChecklistInput): ChecklistItem[] {
   items.push(item('PRE', 'Coherencia DB <-> content store sin referencias colgantes', 'PENDING', 'ejecutar migrator_coherence', UPGRADE_PATHS));
   items.push(item('PRE', gatesText(input), 'PENDING', 'gates de breaking changes', UPGRADE_PATHS));
   items.push(item('PRE', 'Estimacion de ventana de corte (benchmark)', 'PENDING', 'ejecutar migrator_estimate', DB_PATCH));
-  items.push(item('PRE', 'Destino provisionado (o externo confirmado)', 'PENDING', 'pendiente de portar la provision Compose', UPGRADE_PATHS));
+  items.push(item('PRE', 'Destino provisionado (o externo confirmado)', 'PENDING', 'ejecutar migrator_provision', UPGRADE_PATHS));
 
   items.push(item('POST', 'Coherencia tras la migracion (dangling=0)', 'PENDING', 'ejecutar migrator_coherence', UPGRADE_PATHS));
   const searchEnterprise = input.targetSearch.toUpperCase() !== 'SOLR';
@@ -106,7 +106,7 @@ export function buildChecklist(input: ChecklistInput): ChecklistItem[] {
       searchEnterprise ? REINDEX_APP : SEARCH_SERVICES,
     ),
   );
-  items.push(item('POST', 'Conteos de nodos, checksums y ACL verificados', 'PENDING', 'pendiente de portar la verificacion', UPGRADE_PATHS));
+  items.push(item('POST', 'Conteos de nodos/refs y content store verificados (ACL manual)', 'PENDING', 'ejecutar migrator_verify_target', UPGRADE_PATHS));
   items.push(item('POST', 'Origen retenido / rollback disponible (no destructivo)', 'OK', 'origen intacto hasta validar el destino', UPGRADE_PATHS));
 
   return items;

@@ -6,7 +6,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
-import { resolveUpgradePath } from '../domain/upgrade-paths.js';
+import { requireSupportedUpgradePath } from '../domain/upgrade-paths.js';
 import {
   destinationRunning,
   projectToComposeRequest,
@@ -15,10 +15,22 @@ import {
   writeCompose,
 } from '../domain/provision.js';
 import { stateDir } from '../domain/experience.js';
-import type { HostRef } from '../infra/exec.js';
+import { computeAlfrescoMemory, type AlfrescoMemory } from '../domain/memory.js';
+import { runShell, type HostRef } from '../infra/exec.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 const json = <T>(value: T): never => JSON.parse(JSON.stringify(value)) as never;
+
+/** RAM asignada a Docker en el host (bytes); `undefined` si no se puede detectar. */
+async function dockerMemTotal(host: HostRef): Promise<number | undefined> {
+  try {
+    const result = await runShell(host, `docker info --format '{{.MemTotal}}'`);
+    const bytes = Number.parseInt(result.stdout.trim(), 10);
+    return result.exitCode === 0 && Number.isFinite(bytes) && bytes > 0 ? bytes : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function destinationHost(project: Awaited<ReturnType<typeof loadProject>>): HostRef {
   if (project.access.mode === 'local' || Object.keys(project.access.hosts).length === 0) return { name: 'local' };
@@ -67,11 +79,13 @@ export function registerProvisionTools(ctx: Context): void {
         if (execute && shouldSkipProvision(mode, running)) {
           return json({ mode, skipped: true, hops: 0, files: [], executed: false });
         }
-        const hops = resolveUpgradePath(project.source.version, project.target.version);
+        const hops = requireSupportedUpgradePath(project.source.version, project.target.version);
         const workDir = `${stateDir()}/provision`;
         const files: string[] = [];
+        const memTotal = await dockerMemTotal(host);
+        const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
         for (const hop of hops) {
-          const request = projectToComposeRequest(project, hop.to, args.withShare === true);
+          const request = projectToComposeRequest(project, hop.to, args.withShare === true, memory);
           if (execute) {
             const result = await provisionCompose(request, workDir, host);
             files.push(result.file);

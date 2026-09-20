@@ -107,6 +107,43 @@ export function resolveUpgradePath(fromRaw: string, to: string): Hop[] {
   });
 }
 
+/**
+ * Exige una ruta de upgrade soportada. Lanza si no hay ruta o si algun hop es `UNSUPPORTED`:
+ * NUNCA se migra de una version a otra no soportada (regla determinista, no criterio del agente).
+ */
+export function requireSupportedUpgradePath(from: string, to: string): Hop[] {
+  const hops = resolveUpgradePath(from, to);
+  if (hops.length === 0) {
+    throw new Error(`Sin ruta de upgrade de ${from} a ${to}: version no soportada`);
+  }
+  const unsupported = hops.filter((h) => h.pathClass === 'UNSUPPORTED');
+  if (unsupported.length > 0) {
+    throw new Error(
+      `Salto de version NO soportado (${from} -> ${to}): ${unsupported.map((h) => `${h.from}->${h.to}`).join(', ')}. ` +
+        'Respeta la cadena de upgrade del fabricante.',
+    );
+  }
+  return hops;
+}
+
+/** Avisos proactivos de una ruta: saltos intermedios obligatorios y validacion con el fabricante. */
+export function upgradePathWarnings(hops: Hop[]): string[] {
+  const warnings: string[] = [];
+  if (hops.length > 1) {
+    const from = hops[0]?.from;
+    const to = hops[hops.length - 1]?.to;
+    warnings.push(
+      `La ruta ${from} -> ${to} requiere ${hops.length} saltos EN ORDEN: ` +
+        `${hops.map((h) => `${h.from}->${h.to}`).join(' -> ')}. No migrar directamente de ${from} a ${to}.`,
+    );
+  }
+  const validation = hops.filter((h) => h.pathClass === 'REQUIRES_VALIDATION').map((h) => `${h.from}->${h.to}`);
+  if (validation.length > 0) {
+    warnings.push(`Hop(s) REQUIRES_VALIDATION (contactar con el fabricante antes de ejecutar): ${validation.join(', ')}`);
+  }
+  return warnings;
+}
+
 /** Gates de breaking changes aplicables segun version destino y edicion. */
 export function breakingChangeGates(targetVersion: string, edition: string): string[] {
   const data = matrix();

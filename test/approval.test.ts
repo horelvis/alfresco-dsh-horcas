@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   assertOneShot,
@@ -11,6 +14,9 @@ import {
 
 type Handler = (request: { toolName: string; agent?: unknown }, next: () => Promise<ApprovalOutcome>) => Promise<ApprovalOutcome | undefined>;
 
+/** Estado temporal: la auditoria de aprobacion no debe ensuciar el `.migrator/` del repo. */
+const auditState = mkdtempSync(path.join(tmpdir(), 'migrator-approval-'));
+
 function fakeCtx(mode: 'allowlist' | 'interactive' = 'allowlist', allow: string[] = ['migrator_run_steps']): { handler: Handler } {
   const holder: { handler?: Handler } = {};
   const ctx = {
@@ -19,7 +25,7 @@ function fakeCtx(mode: 'allowlist' | 'interactive' = 'allowlist', allow: string[
       return undefined;
     },
   };
-  installApproval(ctx as never, { mode, allow });
+  installApproval(ctx as never, { mode, allow, state: auditState });
   return { handler: holder.handler as Handler };
 }
 

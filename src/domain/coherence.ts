@@ -16,6 +16,16 @@ export interface CoherenceReport {
   samples: string[];
 }
 
+export type CoherencePolicy = 'FAIL_ON_DANGLING' | 'WARN' | 'REPAIR';
+
+/**
+ * `true` si la policy del proyecto exige abortar por referencias colgantes. Por defecto se es
+ * conservador (`FAIL_ON_DANGLING`); `WARN`/`REPAIR` permiten continuar documentando el colgado.
+ */
+export function coherenceBlocked(policy: string | undefined, dangling: number): boolean {
+  return (policy ?? 'FAIL_ON_DANGLING').trim().toUpperCase() === 'FAIL_ON_DANGLING' && dangling > 0;
+}
+
 export interface DanglingReference {
   contentUrl: string;
   sizeBytes: number;

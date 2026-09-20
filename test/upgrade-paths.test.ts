@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { breakingChangeGates, requiresSolrRemoval, resolveUpgradePath, upgradeMatrix } from '../src/domain/upgrade-paths.js';
+import {
+  breakingChangeGates,
+  requireSupportedUpgradePath,
+  requiresSolrRemoval,
+  resolveUpgradePath,
+  upgradeMatrix,
+  upgradePathWarnings,
+} from '../src/domain/upgrade-paths.js';
 
 describe('matriz de upgrade (data-driven)', () => {
   it('la matriz se carga desde data/upgrade-paths.yaml', () => {
@@ -16,6 +23,26 @@ describe('matriz de upgrade (data-driven)', () => {
     const flat = hops.flatMap((h) => h.notes);
     expect(flat).toContain(notes.java21);
     expect(flat).toContain(notes.solrOff);
+  });
+
+  it('7.1 -> 26.2 exige la cadena de 3 hops en orden', () => {
+    const hops = requireSupportedUpgradePath('7.1.0', '26.2');
+    expect(hops.map((h) => `${h.from}->${h.to}`)).toEqual(['7.1.0->7.4', '7.4->25.3', '25.3->26.2']);
+  });
+
+  it('un salto de version no soportado se rechaza', () => {
+    expect(() => requireSupportedUpgradePath('4.0', '26.2')).toThrow(/NO soportado/i);
+  });
+
+  it('avisa de saltos intermedios y de REQUIRES_VALIDATION', () => {
+    const warnings = upgradePathWarnings(requireSupportedUpgradePath('7.1.0', '26.2')).join(' ');
+    expect(warnings).toMatch(/3 saltos EN ORDEN/);
+    expect(warnings).toMatch(/REQUIRES_VALIDATION/);
+  });
+
+  it('una ruta directa soportada no avisa de saltos', () => {
+    const warnings = upgradePathWarnings(requireSupportedUpgradePath('25.3', '26.2'));
+    expect(warnings.some((w) => w.includes('saltos EN ORDEN'))).toBe(false);
   });
 
   it('gates y solrRemoval se evaluan desde la matriz', () => {

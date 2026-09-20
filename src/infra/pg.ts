@@ -49,6 +49,18 @@ export function sourceDbConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Sou
   };
 }
 
+/** Config de la BD del DESTINO (paridad). Mismas variables que el resto del plugin: MIGRATOR_DST_DB_*. */
+export function targetDbConfigFromEnv(env: NodeJS.ProcessEnv = process.env): SourceDbConfig {
+  const fromUrl = parsePostgresUrl(env.MIGRATOR_DST_DB_URL);
+  return {
+    host: env.MIGRATOR_DST_DB_HOST ?? fromUrl.host ?? 'localhost',
+    port: Number.parseInt(env.MIGRATOR_DST_DB_PORT ?? String(fromUrl.port ?? 5432), 10),
+    name: env.MIGRATOR_DST_DB_NAME ?? fromUrl.database ?? 'alfresco',
+    user: env.MIGRATOR_DST_DB_USER ?? 'alfresco',
+    password: env.MIGRATOR_DST_DB_PASSWORD,
+  };
+}
+
 export async function connectSource(config: SourceDbConfig): Promise<pg.Client> {
   const client = new Client({
     host: config.host,

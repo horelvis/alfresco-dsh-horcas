@@ -56,7 +56,8 @@ export function upgradeGatesSkill(): SkillContent {
     name: 'alfresco-upgrade-gates',
     description:
       'Matriz de gates de breaking changes por version/edicion destino (Java 21/Tomcat 11, ActiveMQ 6.x con autenticacion, eventos v2, Solr-off en Enterprise desde 26) y rutas de upgrade soportadas. Cargar al planificar un salto de version.',
-    content: `# Gates de breaking changes y rutas de upgrade\n\n${lines.join('\n')}\n\nRutas soportadas: 7.x < 7.2 requiere validacion del fabricante; 7.4 -> 25.3 -> 26.2. Subir Search Services (Solr) antes que el repositorio.\n`,
+    content: `# Gates de breaking changes y rutas de upgrade\n\n${lines.join('\n')}\n\nRutas soportadas: 7.x < 7.2 requiere validacion del fabricante; 7.4 -> 25.3 -> 26.2. Subir Search Services (Solr) antes que el repositorio.
+Regla: NO se salta de version; la migracion se hace por la cadena de hops EN ORDEN (p.ej. 7.1 -> 7.4 -> 25.3 -> 26.2). Los saltos \`UNSUPPORTED\` se rechazan.\n`,
   };
 }
 
@@ -179,7 +180,7 @@ export function migrationPlaybookSkill(): SkillContent {
 7. **Ejecucion en destino**: preflight-target -> backup-source-db -> copy-content -> restore-target-db -> schema-upgrade -> reindex -> verify-target.
 8. **Post**: coherencia con dangling=0, reindex verificado, conteos/checksums/ACL, origen retenido para rollback.
 
-Reglas duras: el ORIGEN es inmutable; las escrituras van solo al DESTINO y con aprobacion; los indices de busqueda se regeneran, nunca se migran; no ejecutar CDC sin REPLICA IDENTITY.
+Reglas duras: el ORIGEN es inmutable; las escrituras van solo al DESTINO y con aprobacion; los indices de busqueda se regeneran, nunca se migran; no ejecutar CDC sin REPLICA IDENTITY; **nunca migrar de una version a otra NO soportada** (se respeta la cadena de hops en orden; \`UNSUPPORTED\` se rechaza y \`REQUIRES_VALIDATION\` exige validacion del fabricante).
 `,
   };
 }

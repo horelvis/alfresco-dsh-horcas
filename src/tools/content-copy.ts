@@ -7,6 +7,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { planContentCopy, type ContentStoreRef, type StoreType } from '../domain/content-copy.js';
+import { resolveContentStorePath } from '../domain/content-store.js';
 import { runShell, type HostRef } from '../infra/exec.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -50,28 +51,48 @@ export function registerContentCopyTools(ctx: Context): void {
       async execute(args) {
         const project = await loadProject(args.project);
         if (args.execute === true) requireDistinctTarget(project);
-        const source: ContentStoreRef = {
-          type: (project.source.contentStore?.type ?? 'FS') as StoreType,
-          path: project.source.contentStore?.path,
-          bucket: (project.source.contentStore as { bucket?: string } | undefined)?.bucket,
-        };
-        const target: ContentStoreRef = {
-          type: (project.target.contentStore?.type ?? 'FS') as StoreType,
-          path: project.target.contentStore?.path,
-          bucket: (project.target.contentStore as { bucket?: string } | undefined)?.bucket,
-        };
+        const sourceRef = project.source.contentStore;
+        const targetRef = project.target.contentStore;
+        const destination = destinationHost(project);
+        const sshTarget =
+          destination.name !== 'local' && destination.host
+            ? `${destination.user ?? 'root'}@${destination.host}`
+            : undefined;
+        const ref = (store: { type?: string; path?: string; volume?: string } | undefined, resolved?: string): ContentStoreRef => ({
+          type: (store?.type ?? 'FS') as StoreType,
+          path: resolved ?? store?.path ?? (store?.volume ? `/${store.volume}` : undefined),
+          bucket: (store as { bucket?: string } | undefined)?.bucket,
+        });
+
+        if (args.execute !== true) {
+          const plan = planContentCopy(ref(sourceRef), ref(targetRef), {
+            delta: args.delta === true,
+            bandwidthKbps: args.bandwidthKbps,
+            sshTarget,
+            sshIdentity: destination.keyFile,
+          });
+          return json({ ...plan, executed: false });
+        }
+
+        const sourcePath = await resolveContentStorePath(sourceRef, { name: 'local' });
+        const targetPath = await resolveContentStorePath(targetRef, destination);
+        if (!sourcePath || !targetPath) {
+          throw new Error('faltan rutas de content store (path o volume)');
+        }
+        const source = ref(sourceRef, sourcePath);
+        const target = ref(targetRef, targetPath);
         const plan = planContentCopy(source, target, {
           delta: args.delta === true,
           bandwidthKbps: args.bandwidthKbps,
+          sshTarget,
+          sshIdentity: destination.keyFile,
         });
-        if (args.execute !== true) {
-          return json({ ...plan, executed: false });
-        }
         const override = process.env.MIGRATOR_CONTENT_COPY_CMD;
         const command = override
           ? override.replaceAll('{source}', source.path ?? '').replaceAll('{target}', target.path ?? '')
           : plan.command;
-        const result = await runShell(destinationHost(project), command);
+        // El ORIGEN es local: la copia se lanza desde aqui (rsync empuja al destino por SSH).
+        const result = await runShell({ name: 'local' }, command);
         if (result.exitCode !== 0) {
           throw new Error(`Copia de contenido fallida (exit=${result.exitCode}): ${result.stderr}`);
         }

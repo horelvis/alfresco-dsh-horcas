@@ -16,6 +16,12 @@ describe('content copy planner', () => {
     expect(plan.command).toContain('--bwlimit=20000');
   });
 
+  it('FS -> FS remoto usa sshTarget con identidad', () => {
+    const plan = planContentCopy({ type: 'FS', path: '/src' }, { type: 'FS', path: '/dst' }, { sshTarget: 'user@host', sshIdentity: '/k' });
+    expect(plan.command).toContain('user@host:/dst/');
+    expect(plan.command).toContain('-i /k');
+  });
+
   it('FS -> S3 usa aws s3 sync', () => {
     const plan = planContentCopy({ type: 'FS', path: '/src' }, { type: 'S3', bucket: 'bucket/prefix' });
     expect(plan.via).toBe('S3');
