@@ -6,6 +6,11 @@ plugin aporta el **dominio** (rutas de versión, esquemas de referencia, recomen
 **encapsula la seguridad** (el origen es inmutable; la escritura solo va al destino y con aprobación).
 
 ## Instalación y uso (rápido)
+Desde **GitHub** (sin clonar), instala el comando global:
+```sh
+npm i -g github:horelvis/dsh-alfresco-migrator
+```
+O desde el repo clonado:
 ```sh
 ./install.sh                    # deps + build + bundle en el perfil dsh + comando global `alfresco-dsh-horcas`
 cp .env.example .env            # rellena credenciales del origen y modelo

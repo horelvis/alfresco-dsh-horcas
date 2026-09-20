@@ -28,6 +28,7 @@
     }
   },
   "scripts": {
+    "prepare": "npm run build",
     "build": "tsdown src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

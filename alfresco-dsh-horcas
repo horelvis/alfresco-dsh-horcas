@@ -22,11 +22,18 @@ while [ -h "$SELF" ]; do
 done
 ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
 
-# 1) Configuracion local (no versionada): copia .env.example a .env y rellena.
-if [ -f "$ROOT/.env" ]; then
+# 1) Configuracion local (no versionada): `.env` del proyecto actual o del paquete.
+#    Copia .env.example a .env y rellena (credenciales del origen y modelo).
+ENV_FILE=""
+if [ -f "$PWD/.env" ]; then
+  ENV_FILE="$PWD/.env"
+elif [ -f "$ROOT/.env" ]; then
+  ENV_FILE="$ROOT/.env"
+fi
+if [ -n "$ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1091
-  . "$ROOT/.env"
+  . "$ENV_FILE"
   set +a
 fi
 
@@ -41,9 +48,9 @@ export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-${OPENAI_API_KEY:-}}"
 export DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-${OPENAI_BASE_URL:-}}"
 export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-v4.1-flash}}"
 
-# 4) Datos de dominio y estado del plugin.
+# 4) Datos de dominio (del paquete) y estado (del proyecto actual).
 export MIGRATOR_DATA_DIR="${MIGRATOR_DATA_DIR:-$ROOT/data}"
-export MIGRATOR_STATE="${MIGRATOR_STATE:-$ROOT/.migrator}"
+export MIGRATOR_STATE="${MIGRATOR_STATE:-$PWD/.migrator}"
 export MIGRATOR_APPROVAL="${MIGRATOR_APPROVAL:-deny}"
 
 usage() {
@@ -84,8 +91,10 @@ case "${1:-}" in
 alfresco-dsh-horcas — agente de migracion de Alfresco (plugin dsh-alfresco-migrator) sobre DeepSeek Harness
 
 INSTALAR
-  ./install.sh                 dependencias + build + bundle en el perfil dsh + comando global (npm link)
-  cp .env.example .env         rellena credenciales del origen y modelo
+  npm i -g github:horelvis/dsh-alfresco-migrator   # desde GitHub: instala el comando global
+  # o, desde el repo clonado:
+  ./install.sh                 dependencias + build + bundle en el perfil dsh + comando global
+  cp .env.example .env         rellena credenciales del origen y modelo (o crea .env en tu proyecto)
   # sin instalar, desde el repo:  ./alfresco-dsh-horcas ...
 
 EJECUTAR
