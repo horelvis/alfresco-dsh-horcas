@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { installSecurity, type SecurityContext } from './security/policy.js';
 import { installApproval, type ApprovalContext } from './approval.js';
 import { installLanguage } from './language.js';
+import { installPrompt } from './prompt.js';
 import { installSkills, type SkillsContext } from './skills.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
@@ -34,6 +35,7 @@ export function apply(ctx: Context): void {
   installSecurity(ctx as unknown as SecurityContext);
   installApproval(ctx as unknown as ApprovalContext);
   installLanguage(ctx as unknown as Parameters<typeof installLanguage>[0]);
+  installPrompt(ctx as unknown as Parameters<typeof installPrompt>[0]);
   void installSkills(ctx as unknown as SkillsContext);
   registerReadTools(ctx);
   registerCoherenceTools(ctx);

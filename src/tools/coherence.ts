@@ -61,9 +61,8 @@ export function registerCoherenceTools(ctx: Context): void {
       name: 'migrator_dangling_explain',
       timeoutMs: 300_000,
       description:
-        'Para cada referencia colgante, resuelve el nodo vivo/version/papelera y la ruta del documento (evidencia para decidir).',
-      parameters: {
-      },
+        'Para cada referencia COLGANTE (el binario FALTA en el content store), resuelve el nodo vivo/version/papelera y la ruta del documento (evidencia para decidir).',
+      parameters: {},
       output: {
         schema: { type: 'array', items: { type: 'object', additionalProperties: true } },
         render: (_args, value) => {
@@ -73,7 +72,7 @@ export function registerCoherenceTools(ctx: Context): void {
             items
               .map((d) => {
                 const refs = d.references.map((r) => `  - [${r.role}] ${r.type} ${r.path}${r.name ? ` (${r.name})` : ''}`).join('\n');
-                return `${d.contentUrl} · vivo=${d.liveReferenced}\n${refs}`;
+                return `${d.contentUrl} · binario=AUSENTE en el content store · referenciado por nodo vivo=${d.liveReferenced}\n${refs}`;
               })
               .join('\n\n'),
           );
@@ -86,6 +85,10 @@ export function registerCoherenceTools(ctx: Context): void {
           sizeBytes: d.sizeBytes,
           markedOrphan: d.markedOrphan,
           roles: [...d.roles],
+          /** El objeto NO esta en el store: por eso es un colgante (no confundir con `liveReferenced`). */
+          present: false,
+          missing: true,
+          /** Referenciado por un nodo vivo (no implica que el binario exista). */
           liveReferenced: d.liveReferenced,
           references: d.references.map((r) => ({ ...r })),
         }));
