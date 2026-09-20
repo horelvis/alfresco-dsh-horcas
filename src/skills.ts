@@ -171,6 +171,17 @@ export function migrationPlaybookSkill(): SkillContent {
       'Flujo operativo de una migracion ACS a 26.x: assessment, ensayo en clone/TEST, drift a PROD, backup no destructivo, pasos de ejecucion (preflight, dump, copia, restore, schema-upgrade, reindex, verify), coherencia y forense de colangantes, gates GO/NO-GO. Cargar al ejecutar o supervisar una migracion.',
     content: `# Playbook de migracion ACS -> 26.x
 
+## Ante una peticion amplia (p.ej. "iniciar evaluacion de migracion de version alfresco")
+No esperes un prompt perfecto ni inventes datos. Empieza por el **assessment** (fuente de verdad), propone
+un **plan de ejecucion** por fases y **pide** lo que falte por la via de preguntas del arnes
+(\`ask_user_question\`):
+- **proyecto**: ruta del YAML (o crealo con \`migrator_wizard\`); no hay proyecto por defecto.
+- **almacenamiento**: si origen y destino comparten datastore/LUN (NAS/SAN/VM) — \`migrator_mount_check\`.
+- **acceso**: BD/REST del origen, host SSH del destino, si el Postgres del destino es alcanzable.
+- **decisiones**: ruta de upgrade (hops), estrategia (C/D/I) y ventana de corte.
+Recuerda que el entorno es **solo-lectura** por defecto (\`MIGRATOR_MODE=readonly\`): para el ensayo real
+hay que habilitar \`MIGRATOR_MODE=write\` y aprobar; no lo asumas.
+
 1. **Assessment** (\`migrator_assess\`): inventario desde la fuente de verdad (REST + JDBC + store). Nunca usar indices de busqueda.
 2. **Planificacion**: \`migrator_upgrade_path\`, \`migrator_strategy\`, \`migrator_estimate\`, \`migrator_checklist\`.
 3. **Preflight**: \`migrator_schema_check\` (PK/UNIQUE + CDC), \`migrator_coherence\`.
