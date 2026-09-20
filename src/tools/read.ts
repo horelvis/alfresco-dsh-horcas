@@ -14,6 +14,7 @@ export function registerReadTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_upgrade_path',
+      timeoutMs: 15_000,
       description: 'Resuelve la ruta de upgrade soportada de Alfresco (no inventa rutas) y sus gates.',
       parameters: {
         from: { type: 'string', required: true, description: 'Version origen, p.ej. 7.1.0' },
@@ -60,6 +61,7 @@ export function registerReadTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_schema_versions',
+      timeoutMs: 15_000,
       description: 'Lista las versiones de referencia de esquema disponibles (data/schema-references).',
       parameters: {},
       output: {
@@ -75,6 +77,7 @@ export function registerReadTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_schema_check',
+      timeoutMs: 300_000,
       description:
         'Comprueba PK/UNIQUE del esquema PostgreSQL del ORIGEN contra la referencia de su version (read-only).',
       parameters: {
@@ -122,6 +125,7 @@ export function registerReadTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_recommendations',
+      timeoutMs: 15_000,
       description: 'Recomendaciones respaldadas por documentacion oficial para un conjunto de codigos de hallazgo.',
       parameters: {
         codes: { type: 'array', items: { type: 'string' }, required: true, description: 'Codigos, p.ej. COHERENCE_DANGLING' },

@@ -32,6 +32,7 @@ export function registerMountTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_mount_check',
+      timeoutMs: 60_000,
       description:
         'Analiza los montajes del content store en origen y destino (NAS/SAN/NFS/CIFS): clasifica el tipo y detecta mismo backing store o doble salto por red. Read-only.',
       parameters: {

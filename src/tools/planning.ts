@@ -45,6 +45,7 @@ export function registerPlanningTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_strategy',
+      timeoutMs: 300_000,
       description: 'Recomienda estrategia de contenido/BD/indice segun el perfil del repositorio (C1-C5/D1-D2/I1-I2).',
       parameters: { project: { type: 'string', required: true } },
       output: {
@@ -65,6 +66,7 @@ export function registerPlanningTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_estimate',
+      timeoutMs: 300_000,
       description: 'Estima la ventana de migracion por fases (assessment/pre-staging/cutover/post), cuello y riesgos.',
       parameters: {
         project: { type: 'string', required: true },
@@ -103,6 +105,7 @@ export function registerPlanningTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_checklist',
+      timeoutMs: 30_000,
       description: 'Genera la checklist pre/post-cutover segun version/edicion destino y motor de busqueda.',
       parameters: {
         project: { type: 'string', required: true },
@@ -137,6 +140,7 @@ export function registerPlanningTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_jira_export',
+      timeoutMs: 15_000,
       description: 'Exporta epica + hops a un CSV importable por Jira (RFC 4180) en <state>/jira-import.csv.',
       parameters: { project: { type: 'string', required: true } },
       output: {

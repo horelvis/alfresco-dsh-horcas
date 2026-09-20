@@ -16,6 +16,7 @@ export function registerReviewerTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_review',
+      timeoutMs: 180_000,
       description:
         'Master Reviewer LLM: revisa el plan/assessment/coherencia del proyecto y emite APPROVE/APPROVE_WITH_CONDITIONS/REJECT/ABSTAIN con hallazgos. Los datos se anonimizan antes de salir al LLM.',
       parameters: {

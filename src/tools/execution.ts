@@ -35,6 +35,7 @@ export function registerExecutionTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_steps_list',
+      timeoutMs: 15_000,
       description: 'Lista los pasos de migracion disponibles (id, descripcion, si escriben en el destino).',
       parameters: {},
       output: {
@@ -161,6 +162,7 @@ export function registerExecutionTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_run_status',
+      timeoutMs: 15_000,
       description: 'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos). Acepta ruta del YAML o nombre de proyecto.',
       parameters: {
         project: { type: 'string', required: true, description: 'Ruta del YAML de proyecto o nombre de proyecto' },

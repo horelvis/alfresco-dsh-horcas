@@ -166,6 +166,10 @@ marca como *"outcome unknown"* y no cierra el turno. Para nuestras tools:
   continuar con `migrator_run_steps` y `resume=true` (omite los pasos ya `OK` en `.migrator/checkpoints.jsonl`).
 - No reiniciar el servidor del perfil `web` con un turno en curso.
 
+Las tools **read-only declaran `timeoutMs`** (15s–5min según coste) para que no cuelguen indefinidamente.
+Las de **escritura no lo declaran** a propósito: cancelar un paso con efectos podría dejar un resultado
+ambiguo ("outcome unknown"); en su lugar son **idempotentes + checkpointed** y se reanudan con `resume`.
+
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.
 - `upgrade-paths.yaml`: **matriz de rutas de upgrade y gates** (datos, no código).

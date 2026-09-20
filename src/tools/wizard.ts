@@ -81,6 +81,7 @@ export function registerWizardTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_validate',
+      timeoutMs: 15_000,
       description: 'Valida un objeto YAML de proyecto contra el JSON Schema (sin ejecutar nada).',
       parameters: {
         project: { type: 'string', required: true, description: 'Ruta del YAML a validar' },

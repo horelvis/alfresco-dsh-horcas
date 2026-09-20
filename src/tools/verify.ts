@@ -31,6 +31,7 @@ export function registerVerifyTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_verify_target',
+      timeoutMs: 300_000,
       description:
         'Verifica la paridad origen->destino tras la migracion: conteos JDBC (nodos, refs de contenido) y content store (ficheros/bytes). Read-only; no toca origen ni destino.',
       parameters: {

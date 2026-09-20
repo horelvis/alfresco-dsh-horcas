@@ -33,6 +33,7 @@ export function registerExperienceTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_rehearsal_record',
+      timeoutMs: 120_000,
       description:
         'Registra un INTENTO de una migracion de PRUEBA (clone/TEST) en su campana: resultado, pasos y punto de reanudacion (para restaurar y reanudar).',
       parameters: {
@@ -110,6 +111,7 @@ export function registerExperienceTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_experience_latest',
+      timeoutMs: 15_000,
       description: 'Devuelve la campana de ensayo del proyecto (opcionalmente por stage) y su historial de intentos.',
       parameters: {
         project: { type: 'string', required: true },
@@ -136,6 +138,7 @@ export function registerExperienceTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_environment_parity',
+      timeoutMs: 120_000,
       description:
         'Compara el origen actual con el ultimo ensayo validado y devuelve el drift (BLOCKER impide ejecutar en PROD).',
       parameters: {

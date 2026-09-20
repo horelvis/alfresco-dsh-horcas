@@ -17,6 +17,7 @@ export function registerCoherenceTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_coherence',
+      timeoutMs: 300_000,
       description: 'Coherencia DB<->content store del origen (refs, dangling, orphans, verdict). Read-only.',
       parameters: {
         project: { type: 'string', required: true },
@@ -57,6 +58,7 @@ export function registerCoherenceTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_dangling_explain',
+      timeoutMs: 300_000,
       description:
         'Para cada referencia colgante, resuelve el nodo vivo/version/papelera y la ruta del documento (evidencia para decidir).',
       parameters: {

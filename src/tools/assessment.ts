@@ -14,6 +14,7 @@ export function registerAssessmentTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_assess',
+      timeoutMs: 300_000,
       description:
         'Inventario del ORIGEN desde la fuente de verdad: version/edicion (REST), nodos/auditoria/versiones/tamano BD (JDBC read-only) y ficheros/tamano del content store. Nunca usa indices de busqueda.',
       parameters: {

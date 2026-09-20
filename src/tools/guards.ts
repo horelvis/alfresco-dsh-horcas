@@ -11,6 +11,7 @@ export function registerGuardTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
       name: 'migrator_distinct_check',
+      timeoutMs: 15_000,
       description:
         'Comprueba que el DESTINO no sea el MISMO que el origen (misma base de datos o mismo content store). Read-only; el resultado es BLOCKER si comparten.',
       parameters: { project: { type: 'string', required: true } },
