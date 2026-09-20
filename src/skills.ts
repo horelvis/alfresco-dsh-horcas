@@ -192,6 +192,8 @@ hay que habilitar \`MIGRATOR_MODE=write\` y aprobar; no lo asumas.
 8. **Post**: coherencia con dangling=0, reindex verificado, conteos/checksums/ACL, origen retenido para rollback.
 
 Reglas duras: el ORIGEN es inmutable; las escrituras van solo al DESTINO y con aprobacion; los indices de busqueda se regeneran, nunca se migran; no ejecutar CDC sin REPLICA IDENTITY; **nunca migrar de una version a otra NO soportada** (se respeta la cadena de hops en orden; \`UNSUPPORTED\` se rechaza y \`REQUIRES_VALIDATION\` exige validacion del fabricante).
+
+Recuperacion: si un paso se interrumpe (outcome unknown), NO reintentes a ciegas. Las tools read-only se pueden reintentar; para las de escritura, consulta \`migrator_run_status\` (checkpoints), verifica el estado externo y reanuda con \`migrator_run_steps\` y \`resume=true\`.
 `,
   };
 }

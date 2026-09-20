@@ -92,6 +92,7 @@ La seguridad **no depende del prompt**: está impuesta en código determinista. 
 | 8 | **Política de coherencia** | `FAIL_ON_DANGLING` bloquea; `WARN`/`REPAIR` no | `tools/coherence.ts`, `domain/coherence.ts` | `migration.coherence.policy` |
 | 9 | **Reviewer LLM** | Anonimización reversible; ante duda **ABSTAIN** (nunca aprueba solo) | `domain/reviewer.ts`, `domain/privacy.ts` | `MIGRATOR_AI_ANONYMIZATION` |
 | 10 | **Secretos** | Compose sin secretos embebidos; `.env` ignorado por git | `domain/provision.ts`, `.gitignore` | — |
+| 11 | **Recuperación tras interrupción** | Nunca reintentar a ciegas un paso con efectos: verificar estado y `resume` | `domain/checkpoints.ts`, `tools/execution.ts` | `migrator_run_status`, `resume` |
 
 ### 1. Origen inmutable
 - Todo acceso a PostgreSQL pasa por `selectOnly()` (solo `SELECT`/`WITH`).
@@ -155,6 +156,15 @@ LLM falla o responde algo no parseable, el veredicto es **`ABSTAIN`** (nunca un 
 
 ### 10. Secretos
 El compose generado no embebe secretos (variables de entorno); `.env` está en `.gitignore`.
+
+### 11. Recuperación tras interrupción
+Si una llamada a tool se interrumpe (parada del turno, cierre/reinicio del servidor web), el arnés la
+marca como *"outcome unknown"* y no cierra el turno. Para nuestras tools:
+- **Read-only** (`migrator_coherence`, `migrator_assess`, `migrator_verify_target`…): reintentar es seguro.
+- **Escritura/idempotentes** (`migrator_run_steps`, `copy-content`, `restore-target-db`, `reindex`…): **no
+  reintentar a ciegas**. Primero `migrator_run_status` (checkpoints) y verificar el estado externo; luego
+  continuar con `migrator_run_steps` y `resume=true` (omite los pasos ya `OK` en `.migrator/checkpoints.jsonl`).
+- No reiniciar el servidor del perfil `web` con un turno en curso.
 
 ## Datos de dominio (`data/`)
 - `schema-references/<ver>/Schema-Reference-ALF.xml` (+ `-ACT.xml`): referencia oficial por versión.
