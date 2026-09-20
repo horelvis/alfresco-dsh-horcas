@@ -98,14 +98,16 @@ export function checkHopAlignment(
  */
 export async function assertDestinationHop(project: ProjectConfig, state: string, hops: Hop[]): Promise<void> {
   if (hops.length <= 1) return;
+  const route = hops.map((h) => `${h.from}->${h.to}`).join(' -> ');
   const baseUrl = project.target.baseUrl ?? process.env.MIGRATOR_DST_BASE_URL;
-  const detected = baseUrl
-    ? await discoverRest(
-        baseUrl,
-        process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER,
-        process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD,
-      )
-    : undefined;
+  if (!baseUrl) {
+    throw new Error(`Guarda de hops: define MIGRATOR_DST_BASE_URL para verificar la version del DESTINO. Ruta: ${route}`);
+  }
+  const detected = await discoverRest(
+    baseUrl,
+    process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER,
+    process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD,
+  );
   const progress = await loadHopProgress(state, project.project);
   const alignment = checkHopAlignment(
     hops,
@@ -114,7 +116,9 @@ export async function assertDestinationHop(project: ProjectConfig, state: string
     project.target.version,
   );
   if (!alignment.ok) {
-    throw new Error(`Guarda de hops: ${alignment.reason}. Ruta: ${hops.map((h) => `${h.from}->${h.to}`).join(' -> ')}`);
+    // Distingue "no verificado" (discovery inaccesible) de "verificado y no coincide" (mismatch real).
+    const reason = detected === undefined ? `no se pudo leer la version del DESTINO en ${baseUrl} (¿servicio accesible? ¿credenciales?)` : alignment.reason;
+    throw new Error(`Guarda de hops: ${reason}. Ruta: ${route}`);
   }
 }
 

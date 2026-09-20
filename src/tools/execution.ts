@@ -19,6 +19,10 @@ import type { HostRef } from '../infra/exec.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
+/** El arnes exige salida JSON *lossless*: elimina `undefined`/tipos no serializables (round-trip). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const lossless = (value: unknown): any => JSON.parse(JSON.stringify(value));
+
 function destinationHost(project: Awaited<ReturnType<typeof loadProject>>, env = process.env): HostRef {
   if (project.access.mode === 'local' || Object.keys(project.access.hosts).length === 0) {
     return { name: 'local' };
@@ -164,7 +168,7 @@ export function registerExecutionTools(ctx: Context): void {
             // La experiencia no debe romper la ejecucion.
           }
         }
-        return { runId: report.runId, ok: report.ok, resumeFrom: report.resumeFrom ?? '', warnings, results: report.results.map((r) => ({ ...r })) };
+        return { runId: report.runId, ok: report.ok, resumeFrom: report.resumeFrom ?? '', warnings, results: lossless(report.results) };
       },
     }),
   );
@@ -187,7 +191,7 @@ export function registerExecutionTools(ctx: Context): void {
         const checkpoints = await loadCheckpoints(stateDir(), config.project, args.runId);
         const latest = new Map<string, (typeof checkpoints)[number]>();
         for (const c of checkpoints) latest.set(c.step, c);
-        return [...latest.values()].map((c) => ({ ...c }));
+        return lossless([...latest.values()].map((c) => ({ ...c })));
       },
     }),
   );

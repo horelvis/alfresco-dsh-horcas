@@ -35,30 +35,42 @@ const sizeSql = (engine: string | undefined): string | null => {
   }
 };
 
-/** Discovery REST: version/edicion del repositorio. */
+/**
+ * Discovery REST: version/edicion del repositorio. Prueba la API v1 (`/api/-default-/public/...`) y,
+ * si no responde, el web script clasico (`/api/discovery`), que devuelve el mismo `entry.repository`
+ * (con la version como cadena). Distintas versiones/ediciones exponen una u otra, asi que se intentan
+ * en orden y se devuelve la primera que conteste.
+ */
 export async function discoverRest(
   baseUrl: string,
   user?: string,
   password?: string,
 ): Promise<{ version: string; edition: string } | undefined> {
-  const url = `${baseUrl.replace(/\/$/, '')}/api/-default-/public/alfresco/versions/1/discovery`;
+  const root = baseUrl.replace(/\/+$/, '');
+  const base = root.endsWith('/api') ? root : `${root}/api`;
+  const candidates = [`${base}/-default-/public/alfresco/versions/1/discovery`, `${base}/discovery`];
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (user && password) {
     headers.Authorization = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
   }
-  try {
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
-    if (!response.ok) return undefined;
-    const body = (await response.json()) as { entry?: { repository?: { version?: { major?: number; minor?: number; patch?: number }; edition?: string } } };
-    const repository = body.entry?.repository;
-    const version = repository?.version;
-    if (!version) return undefined;
-    const label = `${version.major ?? 0}.${version.minor ?? 0}.${version.patch ?? 0}`;
-    const edition = (repository?.edition ?? 'Community').toLowerCase() === 'enterprise' ? 'EE' : 'CE';
-    return { version: label, edition };
-  } catch {
-    return undefined;
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) continue;
+      const body = (await response.json()) as {
+        entry?: { repository?: { version?: { major?: number | string; minor?: number | string; patch?: number | string }; edition?: string } };
+      };
+      const repository = body.entry?.repository;
+      const version = repository?.version;
+      if (!version) continue;
+      const label = `${version.major ?? 0}.${version.minor ?? 0}.${version.patch ?? 0}`;
+      const edition = (repository?.edition ?? 'Community').toLowerCase() === 'enterprise' ? 'EE' : 'CE';
+      return { version: label, edition };
+    } catch {
+      // endpoint no disponible: se prueba el siguiente
+    }
   }
+  return undefined;
 }
 
 export async function scanStore(root: string): Promise<{ files: number; bytes: number; maxBytes: number }> {

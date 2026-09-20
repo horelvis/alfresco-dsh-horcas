@@ -70,6 +70,23 @@ describe('backup', () => {
     await rm(backupDir, { recursive: true, force: true });
   });
 
+  it('dry-run detecta un backup ya existente (preexisting) y lo marca completo', async () => {
+    const store = await tempStore();
+    const backupDir = await mkdtemp(path.join(os.tmpdir(), 'bk-'));
+    await mkdir(path.join(backupDir, 'db'), { recursive: true });
+    await writeFile(path.join(backupDir, 'db', 'alfresco-postgresql.dump'), 'dump');
+    await mkdir(path.join(backupDir, 'contentstore', '2025'), { recursive: true });
+    await writeFile(path.join(backupDir, 'contentstore', '2025', 'x.bin'), 'x');
+    await mkdir(path.join(backupDir, 'config'), { recursive: true });
+    await writeFile(path.join(backupDir, 'config', 'demo.json'), '{}');
+
+    const result = await runBackup({ project: project(store), backupDir, host: { name: 'local' }, dryRun: true, env: {} });
+    expect(result.artifacts.every((a) => a.preexisting)).toBe(true);
+    expect(result.complete).toBe(true);
+    await rm(store, { recursive: true, force: true });
+    await rm(backupDir, { recursive: true, force: true });
+  });
+
   it('copia el store con rsync y genera manifiesto + snapshot de config', async () => {
     const store = await tempStore();
     const backupDir = await mkdtemp(path.join(os.tmpdir(), 'bk-'));

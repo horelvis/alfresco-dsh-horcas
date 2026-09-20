@@ -153,13 +153,17 @@ async function contentArtifact(
   note: string | undefined,
 ): Promise<BackupArtifact> {
   const manifestFile = path.join(ctx.backupDir, 'contentstore-manifest.json');
-  const { file } = await writeManifest(dir, manifestFile);
+  // En dry-run sobre un store ya copiado NO se reescribe el manifiesto (dry-run = solo lectura).
+  let manifestPath = manifestFile;
+  if (!(ctx.dryRun && preexisting)) {
+    ({ file: manifestPath } = await writeManifest(dir, manifestFile));
+  }
   const { files, bytes } = await inventory(dir);
   return {
     kind: 'CONTENT_STORE',
     location: dir,
     sizeBytes: bytes,
-    sha256: await sha256File(file),
+    sha256: (await nonEmptyFile(manifestPath)) ? await sha256File(manifestPath) : undefined,
     fileCount: files,
     preexisting,
     created,
@@ -169,6 +173,10 @@ async function contentArtifact(
 
 async function config(ctx: BackupContext): Promise<BackupArtifact> {
   const file = path.join(ctx.backupDir, 'config', `${ctx.project.project}.json`);
+  // Detecta un snapshot YA existente tambien en dry-run (si no, un backup completo parecia "a medias").
+  if (await nonEmptyFile(file)) {
+    return { kind: 'CONFIG', location: file, sizeBytes: (await stat(file)).size, sha256: await sha256File(file), fileCount: 1, preexisting: true, created: false };
+  }
   if (ctx.dryRun) return planned('CONFIG', file, 'snapshot de configuracion a escribir');
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, JSON.stringify(ctx.project.raw, null, 2), 'utf8');
