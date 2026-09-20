@@ -4,8 +4,11 @@
  * - Politica `tools/pre-execute`: las tools del migrador se permiten (read-only) o se marcan `ask`
  *   (escritura en destino, requiere aprobacion humana). Tools desconocidas con prefijo del plugin: deny.
  * - Guardrail solo-migracion (`MIGRATOR_GUARDRAIL=true`): las tools ajenas al plugin se permiten por
- *   CAPACIDAD (lectura e inspeccion, orquestacion/multiagente, preguntas al humano), y se deniegan
- *   las de ejecucion/mutacion (bash/pwsh/escritura/web). Extensible con `MIGRATOR_GUARDRAIL_ALLOW`.
+ *   CAPACIDAD (lectura/inspeccion, ejecucion por shell, mutacion de ficheros, orquestacion/multiagente,
+ *   preguntas al humano) y se deniega solo la RED arbitraria (web_fetch/web_search). La ejecucion/mutacion
+ *   NO se deniega aqui: la gobierna el sandbox del arnes (`DSH_PERMISSION_MODE=read-only`) + aprobacion
+ *   `ask`, de modo que toda escritura/borrado requiere confirmacion humana. Extensible con
+ *   `MIGRATOR_GUARDRAIL_ALLOW`.
  * - Modo solo-lectura (`MIGRATOR_MODE=readonly`, por defecto): las tools de ESCRITURA del migrador se
  *   DENIEGAN de forma determinista (no depende del prompt); para escribir, `MIGRATOR_MODE=write`.
  * - Guard monotono: el ORIGEN es inmutable; ninguna operacion de escritura puede nombrarlo.
@@ -91,6 +94,14 @@ export const GUARDRAIL_ALLOW = [
   'read_image',
   'glob',
   'grep',
+  // Ejecucion/inspeccion por shell: el arnes la gobierna con sandbox `read-only` + aprobacion `ask`,
+  // de modo que toda escritura/borrado requiere confirmacion humana (no se deniega aqui).
+  'bash',
+  'pwsh',
+  // Mutacion de ficheros del arnes: misma via (sandbox + aprobacion) para no bloquear la operativa.
+  'write',
+  'edit',
+  'str_replace_editor',
   // Orquestacion y utilidades del arnes.
   'subagent',
   'send_message',
@@ -111,11 +122,6 @@ export const GUARDRAIL_ALLOW = [
 
 /** Sugerencia accionable para una tool denegada por el guardrail. */
 const GUARDRAIL_HINT: Record<string, string> = {
-  bash: 'para inspeccionar usa read/glob/grep; para actuar, las tools migrator_*',
-  pwsh: 'para inspeccionar usa read/glob/grep; para actuar, las tools migrator_*',
-  write: 'para crear el proyecto usa migrator_wizard; las escrituras van por migrator_*',
-  edit: 'edita ficheros del proyecto con migrator_wizard o las tools migrator_*',
-  str_replace_editor: 'edita ficheros del proyecto con migrator_wizard o las tools migrator_*',
   web_fetch: 'en modo migracion no hay acceso web; usa las fuentes oficiales ya incluidas (migrator_recommendations)',
   web_search: 'en modo migracion no hay acceso web; usa migrator_recommendations',
 };

@@ -20,13 +20,15 @@ describe('politica de seguridad', () => {
     expect(decide({ name: 'bash' }).kind).toBe('allow');
   });
 
-  it('guardrail: permite lectura/orquestacion y deniega ejecucion/mutacion', () => {
-    // Denegadas (ejecucion / mutacion / red arbitraria).
-    expect(decide({ name: 'bash' }, { guardrail: true }).kind).toBe('deny');
-    expect((decide({ name: 'bash' }, { guardrail: true }) as { reason: string }).reason).toMatch(/read\/glob\/grep/);
-    expect(decide({ name: 'write' }, { guardrail: true }).kind).toBe('deny');
-    expect(decide({ name: 'str_replace_editor' }, { guardrail: true }).kind).toBe('deny');
+  it('guardrail: permite lectura/ejecucion/orquestacion y deniega red arbitraria', () => {
+    // Ejecucion/mutacion: permitidas; las gobierna el sandbox `read-only` + aprobacion del arnes.
+    expect(decide({ name: 'bash' }, { guardrail: true }).kind).toBe('allow');
+    expect(decide({ name: 'pwsh' }, { guardrail: true }).kind).toBe('allow');
+    expect(decide({ name: 'write' }, { guardrail: true }).kind).toBe('allow');
+    expect(decide({ name: 'str_replace_editor' }, { guardrail: true }).kind).toBe('allow');
+    // Denegada (red arbitraria).
     expect(decide({ name: 'web_fetch' }, { guardrail: true }).kind).toBe('deny');
+    expect(decide({ name: 'web_search' }, { guardrail: true }).kind).toBe('deny');
     // Permitidas (lectura).
     expect(decide({ name: 'read' }, { guardrail: true }).kind).toBe('allow');
     expect(decide({ name: 'grep' }, { guardrail: true }).kind).toBe('allow');

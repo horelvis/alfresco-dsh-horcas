@@ -54,12 +54,18 @@ export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"
 # 4) Datos de dominio (del paquete) y estado (del proyecto actual).
 export MIGRATOR_DATA_DIR="${MIGRATOR_DATA_DIR:-$ROOT/data}"
 export MIGRATOR_STATE="${MIGRATOR_STATE:-$PWD/.migrator}"
-# Guardrail solo-migracion: permite lectura/orquestacion y deniega bash/escritura/web.
+# Guardrail solo-migracion: permite lectura/inspeccion, ejecucion por shell, mutacion de ficheros y
+# orquestacion; deniega solo la RED arbitraria (web_fetch/web_search).
 # Pon false para uso general; amplia con MIGRATOR_GUARDRAIL_ALLOW=bash,read.
 export MIGRATOR_GUARDRAIL="${MIGRATOR_GUARDRAIL:-true}"
 # Solo-lectura (determinista): las tools de ESCRITURA del migrador se DENIEGAN. Para el ensayo real
 # hay que habilitar explicitamente la escritura: MIGRATOR_MODE=write (y la aprobacion que corresponda).
 export MIGRATOR_MODE="${MIGRATOR_MODE:-readonly}"
+# Sandbox de ficheros del arnes: `read-only` => toda escritura/borrado (bash rm, write/edit, redirecciones)
+# queda BLOQUEADO y escala a aprobacion humana (`ask`). NO usar `workspace-write` (permite borrados dentro
+# del workspace sin preguntar) ni `danger-full-access` (aprobacion `never`). Es la garantia "todo borrado
+# lo confirma un humano", independiente del prompt.
+export DSH_PERMISSION_MODE="${DSH_PERMISSION_MODE:-read-only}"
 
 usage() {
   echo "uso: alfresco-dsh-horcas [web [--port N] [--no-open]]   # UI web (por defecto)" >&2
@@ -150,10 +156,14 @@ APROBACION DE ESCRITURAS (MIGRATOR_APPROVAL)
   headless: deny (defecto, fail-closed) | allowlist | allow
 
 ALCANCE (guardrail solo-migracion, activo por defecto)
-  Permite: lectura/inspeccion (read/glob/grep), orquestacion (subagent, todo, skill, jobs, goal)
-  y preguntas al humano (ask_user_question). Deniega: bash/pwsh, escritura (write/edit) y web.
-  Ampliar:    MIGRATOR_GUARDRAIL_ALLOW=bash,read
+  Permite: lectura/inspeccion (read/glob/grep), ejecucion por shell (bash/pwsh), mutacion de
+  ficheros (write/edit), orquestacion (subagent, todo, skill, jobs, goal) y preguntas al humano
+  (ask_user_question). Deniega solo la red arbitraria (web_fetch/web_search).
   Desactivar: MIGRATOR_GUARDRAIL=false
+
+SANDBOX DE FICHEROS (garantia de borrado, DSH_PERMISSION_MODE)
+  read-only (defecto): cualquier escritura/borrado se bloquea y PIDE APROBACION humana.
+  No usar workspace-write (borrados en el workspace sin preguntar) ni danger-full-access (sin aprobacion).
 EOF
     exit 0
     ;;
