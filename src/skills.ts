@@ -82,7 +82,7 @@ Riesgos y reglas:
 
 La VM **no ve** el datastore del hipervisor ni el backend fisico del SAN. Si \`migrator_mount_check\`
 devuelve \`requiresHumanConfirmation=true\` (discos virtuales \`virtio/vmw\`, transporte \`spi\`, o vendor
-\`VMware\`/\`QEMU\`), **no concluyas por tu cuenta**: usa la via de preguntas del arnes (\`ask_user\`) para
+\`VMware\`/\`QEMU\`), **no concluyas por tu cuenta**: usa la via de preguntas del arnes (\`ask_user_question\`) para
 confirmar con el humano:
 
 - "El content store origen (\`/repositorio\`) y el destino ¿residen en **datastores/LUN distintos** a nivel de vSphere/Proxmox? ¿Comparten almacenamiento fisico?"

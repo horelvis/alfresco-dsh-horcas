@@ -57,8 +57,9 @@ export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"
 # 4) Datos de dominio (del paquete) y estado (del proyecto actual).
 export MIGRATOR_DATA_DIR="${MIGRATOR_DATA_DIR:-$ROOT/data}"
 export MIGRATOR_STATE="${MIGRATOR_STATE:-$PWD/.migrator}"
-# Solo-migracion: deniega tools ajenas (bash/fs/...) salvo ask_user. Pon false para uso general.
-export MIGRATOR_STRICT_TOOLS="${MIGRATOR_STRICT_TOOLS:-true}"
+# Guardrail solo-migracion: permite lectura/orquestacion y deniega bash/escritura/web.
+# Pon false para uso general; amplia con MIGRATOR_GUARDRAIL_ALLOW=bash,read.
+export MIGRATOR_GUARDRAIL="${MIGRATOR_GUARDRAIL:-true}"
 
 usage() {
   echo "uso: alfresco-dsh-horcas [web [--port N] [--no-open]]   # UI web (por defecto)" >&2
@@ -140,10 +141,11 @@ APROBACION DE ESCRITURAS (MIGRATOR_APPROVAL)
   web:      interactive (defecto; aprueba en la UI) | deny | allowlist | allow
   headless: deny (defecto, fail-closed) | allowlist | allow
 
-ALCANCE
-  Por defecto SOLO-MIGRACION: toda tool ajena (bash/fs/web/...) se deniega, salvo ask_user.
-  Permitir alguna herramienta:  MIGRATOR_STRICT_ALLOW=bash,read
-  Uso general (sin limite):     MIGRATOR_STRICT_TOOLS=false
+ALCANCE (guardrail solo-migracion, activo por defecto)
+  Permite: lectura/inspeccion (read/glob/grep), orquestacion (subagent, todo, skill, jobs, goal)
+  y preguntas al humano (ask_user_question). Deniega: bash/pwsh, escritura (write/edit) y web.
+  Ampliar:    MIGRATOR_GUARDRAIL_ALLOW=bash,read
+  Desactivar: MIGRATOR_GUARDRAIL=false
 EOF
     exit 0
     ;;

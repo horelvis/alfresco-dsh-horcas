@@ -3,8 +3,9 @@
  *
  * - Politica `tools/pre-execute`: las tools del migrador se permiten (read-only) o se marcan `ask`
  *   (escritura en destino, requiere aprobacion humana). Tools desconocidas con prefijo del plugin: deny.
- * - Modo solo-migracion (`MIGRATOR_STRICT_TOOLS=true`): deniega toda tool ajena al plugin (bash/fs/web/...),
- *   salvo las permitidas en `MIGRATOR_STRICT_ALLOW` (por defecto `ask_user`).
+ * - Guardrail solo-migracion (`MIGRATOR_GUARDRAIL=true`): las tools ajenas al plugin se permiten por
+ *   CAPACIDAD (lectura e inspeccion, orquestacion/multiagente, preguntas al humano), y se deniegan
+ *   las de ejecucion/mutacion (bash/pwsh/escritura/web). Extensible con `MIGRATOR_GUARDRAIL_ALLOW`.
  * - Guard monotono: el ORIGEN es inmutable; ninguna operacion de escritura puede nombrarlo.
  *
  * La aprobacion real la provee el servicio de approval de `dsh-base`; aqui solo se decide allow/ask/deny.
@@ -60,15 +61,41 @@ interface LooseTools {
   guard(guard: (exec: ToolExec) => string | undefined): unknown;
 }
 
+/**
+ * Guardrail solo-migracion: tools ajenas al plugin permitidas por capacidad. El agente (y sus
+ * subagentes) pueden LEER/inspeccionar y ORQUESTAR, pero no ejecutar comandos ni escribir ficheros
+ * (para eso estan las tools `migrator_*`, que ya encapsulan las guardas).
+ */
+export const GUARDRAIL_ALLOW = [
+  // Lectura / inspeccion (tambien desde subagentes).
+  'read',
+  'read_image',
+  'glob',
+  'grep',
+  // Orquestacion y utilidades del arnes.
+  'subagent',
+  'send_message',
+  'interrupt_agent',
+  'list_subagent_models',
+  'todo_write',
+  'skill',
+  'present',
+  'job_list',
+  'job_output',
+  'job_kill',
+  'create_goal',
+  'get_goal',
+  'update_goal',
+  // Via de preguntas al humano.
+  'ask_user_question',
+] as const;
+
 export interface PolicyOptions {
-  /** Modo solo-migracion: deniega cualquier tool que no sea del migrador. */
-  strictTools?: boolean;
-  /** Tools ajenas permitidas aun en modo estricto (ademas de las por defecto). */
+  /** Guardrail solo-migracion: deniega las tools ajenas fuera de las capacidades permitidas. */
+  guardrail?: boolean;
+  /** Tools ajenas adicionales permitidas por el usuario (amplia el guardrail). */
   allowTools?: string[];
 }
-
-/** Tools ajenas permitidas en modo estricto (el agente puede preguntar al humano). */
-const STRICT_ALLOW_DEFAULT = ['ask_user'];
 
 /** Forma minima del Context de Cordis que necesita la politica (evita acoplarse a tipos rc). */
 export interface SecurityContext {
@@ -90,21 +117,26 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
     }
     return { kind: 'allow' };
   }
-  // Tool ajena al plugin (bash/fs/web/...): se delega, salvo en modo solo-migracion.
-  if (options.strictTools && !(options.allowTools ?? STRICT_ALLOW_DEFAULT).includes(name)) {
-    return { kind: 'deny', reason: `Modo solo-migracion: la tool '${name}' no esta permitida` };
+  // Tool ajena al plugin (bash/fs/web/...): se delega, salvo con el guardrail activo.
+  if (options.guardrail && !new Set<string>([...GUARDRAIL_ALLOW, ...(options.allowTools ?? [])]).has(name)) {
+    return { kind: 'deny', reason: `Guardrail solo-migracion: la tool '${name}' no esta permitida` };
   }
   return { kind: 'allow' };
 }
 
-/** Opciones de politica desde el entorno: `MIGRATOR_STRICT_TOOLS` y `MIGRATOR_STRICT_ALLOW`. */
+/**
+ * Opciones desde el entorno:
+ * - `MIGRATOR_GUARDRAIL` (alias: `MIGRATOR_STRICT_TOOLS`): activa el guardrail solo-migracion.
+ * - `MIGRATOR_GUARDRAIL_ALLOW` (alias: `MIGRATOR_STRICT_ALLOW`): tools extra separadas por comas.
+ */
 export function policyOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): PolicyOptions {
-  const strictTools = ['true', '1', 'yes', 'on'].includes((env.MIGRATOR_STRICT_TOOLS ?? '').toLowerCase());
-  const extra = (env.MIGRATOR_STRICT_ALLOW ?? '')
+  const raw = env.MIGRATOR_GUARDRAIL ?? env.MIGRATOR_STRICT_TOOLS ?? '';
+  const guardrail = ['true', '1', 'yes', 'on'].includes(raw.toLowerCase());
+  const allowTools = (env.MIGRATOR_GUARDRAIL_ALLOW ?? env.MIGRATOR_STRICT_ALLOW ?? '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
-  return { strictTools, allowTools: extra.length > 0 ? [...STRICT_ALLOW_DEFAULT, ...extra] : STRICT_ALLOW_DEFAULT };
+  return { guardrail, allowTools };
 }
 
 /** Guard monotono: bloquea escritura que apunte al origen (inmutable). */

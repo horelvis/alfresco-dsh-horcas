@@ -195,7 +195,7 @@ export interface MountAssessment {
   /**
    * `true` si NO se puede concluir desde el guest y conviene preguntar al humano
    * (p.ej. discos virtuales: el datastore del hipervisor no es visible). El agente debe entonces
-   * usar la via de preguntas del arnes (ask_user) antes de autorizar la copia.
+   * usar la via de preguntas del arnes (ask_user_question) antes de autorizar la copia.
    */
   requiresHumanConfirmation: boolean;
 }
