@@ -77,8 +77,12 @@ approval_default() {
   fi
 }
 
-# Arranca dsh (binario global o via npx).
+# Arranca dsh: DSH_BIN (p.ej. un arnes custom del fork) > `dsh` del PATH > npx.
 run_dsh() {
+  if [ -n "${DSH_BIN:-}" ]; then
+    # shellcheck disable=SC2086  # DSH_BIN puede ser "node /ruta/bin.js"
+    exec $DSH_BIN "$@"
+  fi
   if command -v dsh >/dev/null 2>&1; then
     exec dsh "$@"
   fi
