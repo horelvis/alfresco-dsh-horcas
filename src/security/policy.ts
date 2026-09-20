@@ -125,31 +125,26 @@ const isWrite = (name: string): boolean => (WRITE_TOOLS as readonly string[]).in
  */
 export function writeReason(name: string, args: unknown, toolDescription?: string): string {
   const a = (args ?? {}) as Record<string, unknown>;
-  const parts: string[] = [];
-  const head = toolDescription?.trim();
-  parts.push(head ? `${head.replace(/\.\s*$/, '')}.` : `La tool ${name} puede escribir en el DESTINO; requiere aprobacion.`);
-  if (a.project) parts.push(`Proyecto: ${String(a.project)}.`);
+  const lines: string[] = [];
+  const clean = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.]\s*$/, '');
+  const head = toolDescription ? clean(toolDescription) : `La tool ${name} puede escribir en el DESTINO`;
+  lines.push(`${head}.`);
+  if (a.project) lines.push(`Proyecto: ${String(a.project)}`);
+  const dryRun = a.execute !== true;
   if (name === 'migrator_run_steps' && Array.isArray(a.steps)) {
-    const detail = (a.steps as unknown[])
-      .map((s) => {
-        const id = String(s);
-        return `${id} (${stepById(id)?.description ?? 'paso'})`;
-      })
-      .join('; ');
-    if (detail) parts.push(`Pasos: ${detail}.`);
+    lines.push(`Pasos (${dryRun ? 'dry-run, no ejecuta nada' : 'EXECUTE, escribe en el DESTINO'}):`);
+    for (const step of a.steps as unknown[]) {
+      const id = String(step);
+      lines.push(`- ${id} — ${clean(stepById(id)?.description ?? 'paso')}`);
+    }
+  } else if ('execute' in a) {
+    lines.push(`Modo: ${dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)'}`);
   }
-  if ('execute' in a) {
-    parts.push(
-      a.execute === true
-        ? 'Modo: EXECUTE (escribe en el DESTINO).'
-        : 'Modo: dry-run (no ejecuta nada; solo planifica).',
-    );
-  }
-  if (a.delta === true) parts.push('Copia incremental.');
-  if (a.resume === true) parts.push('Reanuda (omite pasos ya OK).');
-  if (a.out) parts.push(`Salida: ${String(a.out)}.`);
-  parts.push('El ORIGEN no se modifica.');
-  return parts.join(' ');
+  if (a.delta === true) lines.push('Copia incremental');
+  if (a.resume === true) lines.push('Reanuda (omite pasos ya OK)');
+  if (a.out) lines.push(`Salida: ${String(a.out)}`);
+  if (name !== 'migrator_wizard') lines.push('El ORIGEN no se modifica.');
+  return lines.join('\n');
 }
 
 /** Decide la politica de una llamada del migrador (exportada para tests). */
