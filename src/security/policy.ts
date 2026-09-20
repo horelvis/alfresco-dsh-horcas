@@ -3,6 +3,8 @@
  *
  * - Politica `tools/pre-execute`: las tools del migrador se permiten (read-only) o se marcan `ask`
  *   (escritura en destino, requiere aprobacion humana). Tools desconocidas con prefijo del plugin: deny.
+ * - Modo solo-migracion (`MIGRATOR_STRICT_TOOLS=true`): deniega toda tool ajena al plugin (bash/fs/web/...),
+ *   salvo las permitidas en `MIGRATOR_STRICT_ALLOW` (por defecto `ask_user`).
  * - Guard monotono: el ORIGEN es inmutable; ninguna operacion de escritura puede nombrarlo.
  *
  * La aprobacion real la provee el servicio de approval de `dsh-base`; aqui solo se decide allow/ask/deny.
@@ -58,6 +60,16 @@ interface LooseTools {
   guard(guard: (exec: ToolExec) => string | undefined): unknown;
 }
 
+export interface PolicyOptions {
+  /** Modo solo-migracion: deniega cualquier tool que no sea del migrador. */
+  strictTools?: boolean;
+  /** Tools ajenas permitidas aun en modo estricto (ademas de las por defecto). */
+  allowTools?: string[];
+}
+
+/** Tools ajenas permitidas en modo estricto (el agente puede preguntar al humano). */
+const STRICT_ALLOW_DEFAULT = ['ask_user'];
+
 /** Forma minima del Context de Cordis que necesita la politica (evita acoplarse a tipos rc). */
 export interface SecurityContext {
   on(event: 'tools/pre-execute', handler: (exec: ToolExec, next: () => Promise<unknown>) => Promise<Decision>): unknown;
@@ -67,19 +79,32 @@ export interface SecurityContext {
 const isWrite = (name: string): boolean => (WRITE_TOOLS as readonly string[]).includes(name);
 
 /** Decide la politica de una llamada del migrador (exportada para tests). */
-export function decide(exec: ToolExec): Decision {
+export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
   const name = exec.name;
-  if (!name.startsWith('migrator_')) {
-    // No es una tool del plugin: se delega en la politica del arnes (bash/fs/...).
+  if (name.startsWith('migrator_')) {
+    if (!KNOWN.has(name)) {
+      return { kind: 'deny', reason: `Tool desconocida del migrador: ${name}` };
+    }
+    if (isWrite(name)) {
+      return { kind: 'ask', reason: `La tool ${name} puede escribir en el DESTINO; requiere aprobacion` };
+    }
     return { kind: 'allow' };
   }
-  if (!KNOWN.has(name)) {
-    return { kind: 'deny', reason: `Tool desconocida del migrador: ${name}` };
-  }
-  if (isWrite(name)) {
-    return { kind: 'ask', reason: `La tool ${name} puede escribir en el DESTINO; requiere aprobacion` };
+  // Tool ajena al plugin (bash/fs/web/...): se delega, salvo en modo solo-migracion.
+  if (options.strictTools && !(options.allowTools ?? STRICT_ALLOW_DEFAULT).includes(name)) {
+    return { kind: 'deny', reason: `Modo solo-migracion: la tool '${name}' no esta permitida` };
   }
   return { kind: 'allow' };
+}
+
+/** Opciones de politica desde el entorno: `MIGRATOR_STRICT_TOOLS` y `MIGRATOR_STRICT_ALLOW`. */
+export function policyOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): PolicyOptions {
+  const strictTools = ['true', '1', 'yes', 'on'].includes((env.MIGRATOR_STRICT_TOOLS ?? '').toLowerCase());
+  const extra = (env.MIGRATOR_STRICT_ALLOW ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { strictTools, allowTools: extra.length > 0 ? [...STRICT_ALLOW_DEFAULT, ...extra] : STRICT_ALLOW_DEFAULT };
 }
 
 /** Guard monotono: bloquea escritura que apunte al origen (inmutable). */
@@ -92,9 +117,9 @@ export function guardReason(exec: ToolExec): string | undefined {
   return undefined;
 }
 
-export function installSecurity(ctx: SecurityContext): void {
+export function installSecurity(ctx: SecurityContext, options: PolicyOptions = policyOptionsFromEnv()): void {
   ctx.on('tools/pre-execute', async (exec, next) => {
-    const decision = decide(exec);
+    const decision = decide(exec, options);
     return decision.kind === 'allow' ? ((await next()) as Decision) : decision;
   });
   ctx.tools.guard(guardReason);

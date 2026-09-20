@@ -141,6 +141,9 @@ alfresco-dsh-horcas web [--port 8080] [--no-open]                               
   cae a `--patch ./cordis.yml`.
 - Aprobación de escrituras: **`interactive`** por defecto en **web** (aprueba en la UI; sin TTY delega
   en ella) y **`deny`** (fail-closed) en headless. También `allowlist`/`allow` (CI).
+- **Alcance solo-migración** por defecto (`MIGRATOR_STRICT_TOOLS=true`): las tools ajenas al plugin
+  (`bash`/`fs`/`web`…) se **deniegan**, salvo `ask_user`. Permitir alguna: `MIGRATOR_STRICT_ALLOW=bash,read`;
+  uso general: `MIGRATOR_STRICT_TOOLS=false`.
 - Requiere `dsh` y Node ≥ 20 (o `npx`). `DSH_PROFILE` cambia el perfil de dsh.
 
 ## Desarrollo
