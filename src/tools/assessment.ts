@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { assessSource } from '../domain/assessment.js';
 
@@ -32,8 +33,8 @@ export function registerAssessmentTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const assessment = await assessSource(project, {
           restUser: process.env.MIGRATOR_SRC_USER,
           restPassword: process.env.MIGRATOR_SRC_PASSWORD,

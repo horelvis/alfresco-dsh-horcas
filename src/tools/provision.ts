@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { requireSupportedUpgradePath } from '../domain/upgrade-paths.js';
@@ -69,8 +70,8 @@ export function registerProvisionTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const mode = process.env.MIGRATOR_DST_PROVISION ?? 'auto';
         const host = destinationHost(project);
         const execute = args.execute === true;

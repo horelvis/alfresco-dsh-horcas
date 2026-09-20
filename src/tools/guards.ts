@@ -1,6 +1,7 @@
 /** Tool de guardas de seguridad: comprueba que el destino NO comparte BD/content store con el origen. */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { assessDistinctTarget } from '../domain/guards.js';
 
@@ -31,8 +32,8 @@ export function registerGuardTools(ctx: Context): void {
             : text('OK: el destino es distinto del origen');
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         return json(assessDistinctTarget(project));
       },
     }),

@@ -8,6 +8,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { requireSupportedUpgradePath, upgradePathWarnings } from '../domain/upgrade-paths.js';
@@ -83,8 +84,8 @@ export function registerWriteTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const config = await loadProject(args.project);
+      async execute(args, exec) {
+        const config = await loadProject(args.project, workspaceCwd(exec));
         const hops = requireSupportedUpgradePath(config.source.version, config.target.version);
         const warnings = upgradePathWarnings(hops);
         const reference = await loadSchemaReference(config.source.version, dataDir());

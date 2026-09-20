@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { loadProject, parseProjectYaml } from '../src/domain/project-config.js';
+import { loadProject, parseProjectYaml, projectCandidates } from '../src/domain/project-config.js';
 
 describe('loadProject', () => {
   it('error claro (con sugerencia) si el proyecto no existe', async () => {
     await expect(loadProject('no/existe/foo.yaml')).rejects.toThrow(
-      /Proyecto no encontrado:.*migrator_wizard/,
+      /Proyecto no encontrado.*migrator_wizard/,
     );
+  });
+
+  it('resuelve un nombre de proyecto a <nombre>.yaml (workspace y data/projects)', () => {
+    const candidates = projectCandidates('gadex-7.1.0', '/ws', '/data');
+    expect(candidates).toContain('/ws/gadex-7.1.0.yaml');
+    expect(candidates).toContain('/data/gadex-7.1.0.yaml');
+    // una ruta relativa tambien se prueba bajo el directorio de datos del plugin
+    expect(projectCandidates('data/projects/example.yaml', '/ws', '/data')).toContain(
+      '/data/data/projects/example.yaml',
+    );
+    // una ruta absoluta no se reescribe
+    expect(projectCandidates('/abs/p.yaml', '/ws', '/data')).toEqual(['/abs/p.yaml']);
   });
 
   it('carga un proyecto existente', async () => {

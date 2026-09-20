@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import {
   localStoreInventory,
@@ -58,8 +59,8 @@ export function registerVerifyTools(ctx: Context): void {
           return text(`verdict=${v.verdict}\n${[...v.counts, ...v.store].map(line).join('\n')}${notes}`);
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const host = destinationHost(project);
         const sourceStore = project.source.contentStore;
         const targetStore = project.target.contentStore;

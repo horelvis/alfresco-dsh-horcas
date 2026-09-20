@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { runBackup } from '../domain/backup.js';
 import { stateDir } from '../domain/experience.js';
@@ -42,8 +43,8 @@ export function registerBackupTools(ctx: Context): void {
           return text(`backup=${v.backupDir} completo=${v.complete}\n${lines.join('\n')}`);
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const backupDir = args.backupDir ?? `${stateDir()}/backup`;
         const result = await runBackup({
           project,

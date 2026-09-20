@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { recommendStrategy, type StrategyInput } from '../domain/strategy.js';
@@ -55,8 +56,8 @@ export function registerPlanningTools(ctx: Context): void {
           return text(`${v.content} / ${v.db} / ${v.index} (confianza ${v.confidence})\n${v.rationale}`);
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const inventory = await sourceInventory(project);
         return json(recommendStrategy(strategyInput(project, inventory)));
       },
@@ -83,8 +84,8 @@ export function registerPlanningTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const inventory = await sourceInventory(project);
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const input: EstimationInput = {
@@ -118,8 +119,8 @@ export function registerPlanningTools(ctx: Context): void {
           return text(v.markdown ?? `items=${v.items}`);
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const input: ChecklistInput = {
           project: project.project,
@@ -147,8 +148,8 @@ export function registerPlanningTools(ctx: Context): void {
         schema: { type: 'object', additionalProperties: false, properties: { file: { type: 'string' }, rows: { type: 'number' } } },
         render: (_args, value) => text(`Escrito ${(value as { file: string }).file} (${(value as { rows: number }).rows} filas)`),
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const epicName = `Migracion ${project.project} a ACS ${project.target.version}`;
         const rows: JiraRow[] = [

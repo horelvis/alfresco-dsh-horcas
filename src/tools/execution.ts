@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { requireSupportedUpgradePath, upgradePathWarnings } from '../domain/upgrade-paths.js';
@@ -81,8 +82,8 @@ export function registerExecutionTools(ctx: Context): void {
           return text(`run=${v.runId} ok=${v.ok}${v.resumeFrom ? ` · reanudar en ${v.resumeFrom}` : ''}${warns ? `\n${warns}` : ''}\n${lines.join('\n')}`);
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const execute = args.execute === true;
         if (execute) requireDistinctTarget(project);
         const state = stateDir();
@@ -183,13 +184,13 @@ export function registerExecutionTools(ctx: Context): void {
         render: (_args, value) =>
           text((value as Array<{ step: string; status: string; detail?: string }>).map((c) => `- ${c.step}: ${c.status}${c.detail ? ` (${c.detail})` : ''}`).join('\n') || '(sin checkpoints)'),
       },
-      async execute(args) {
+      async execute(args, exec) {
         const checkpoints = await loadCheckpoints(stateDir(), args.project, args.runId);
         const latest = new Map<string, (typeof checkpoints)[number]>();
         for (const c of checkpoints) latest.set(c.step, c);
         if (latest.size === 0 && (args.project.endsWith('.yaml') || args.project.endsWith('.yml'))) {
           // El nombre de proyecto (no la ruta) es la clave de los checkpoints: normalizamos.
-          const config = await loadProject(args.project);
+          const config = await loadProject(args.project, workspaceCwd(exec));
           const byName = await loadCheckpoints(stateDir(), config.project, args.runId);
           for (const c of byName) latest.set(c.step, c);
         }

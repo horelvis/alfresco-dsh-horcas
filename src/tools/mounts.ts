@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { assessMounts, parseLsblk, parseMounts } from '../domain/mounts.js';
 import { runShell, type HostRef } from '../infra/exec.js';
@@ -71,8 +72,8 @@ export function registerMountTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const sourcePath = project.source.contentStore?.path ?? '';
         const targetPath = project.target.contentStore?.path ?? '';
         const host = destinationHost(project);

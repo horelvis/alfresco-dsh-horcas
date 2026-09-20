@@ -1,4 +1,5 @@
 /** Carga de la configuracion de proyecto (subconjunto del schema de migracion). */
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import yaml from 'js-yaml';
@@ -103,18 +104,31 @@ export function parseProjectYaml(text: string): ProjectConfig {
   };
 }
 
-export async function loadProject(projectPath: string): Promise<ProjectConfig> {
-  const resolved = path.isAbsolute(projectPath) ? projectPath : path.resolve(process.cwd(), projectPath);
-  let text: string;
-  try {
-    text = await readFile(resolved, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      throw new Error(`Proyecto no encontrado: ${resolved}. Crea el YAML con migrator_wizard o corrige la ruta.`);
-    }
-    throw error;
+/**
+ * Rutas candidatas para un proyecto: acepta una **ruta** o un **nombre** de proyecto. Un nombre (sin
+ * extension) se busca como `<nombre>.yaml` en el workspace y en `data/projects/`.
+ */
+export function projectCandidates(projectPath: string, cwd = process.cwd(), root = dataDir()): string[] {
+  const resolved = path.isAbsolute(projectPath) ? projectPath : path.resolve(cwd, projectPath);
+  const candidates = [resolved];
+  if (!path.isAbsolute(projectPath)) candidates.push(path.resolve(root, projectPath));
+  if (!/\.(?:ya?ml)$/i.test(projectPath)) {
+    candidates.push(`${resolved}.yaml`, `${resolved}.yml`);
+
+    candidates.push(path.resolve(root, `${projectPath}.yaml`));
   }
-  return parseProjectYaml(text);
+  return [...new Set(candidates)];
+}
+
+export async function loadProject(projectPath: string, cwd: string = process.cwd()): Promise<ProjectConfig> {
+  const candidates = projectCandidates(projectPath, cwd);
+  const file = candidates.find((candidate) => existsSync(candidate));
+  if (file === undefined) {
+    throw new Error(
+      `Proyecto no encontrado. Probado: ${candidates.join(', ')}. Crea el YAML con migrator_wizard o corrige la ruta.`,
+    );
+  }
+  return parseProjectYaml(await readFile(file, 'utf8'));
 }
 
 export function projectSchemaPath(): string {

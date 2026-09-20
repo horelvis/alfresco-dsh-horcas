@@ -4,6 +4,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { planContentCopy, type ContentStoreRef, type StoreType } from '../domain/content-copy.js';
@@ -48,8 +49,8 @@ export function registerContentCopyTools(ctx: Context): void {
           return text(`via=${v.via} delta=${v.delta} ejecutado=${v.executed}\n${v.command}`);
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
+      async execute(args, exec) {
+        const project = await loadProject(args.project, workspaceCwd(exec));
         if (args.execute === true) requireDistinctTarget(project);
         const sourceRef = project.source.contentStore;
         const targetRef = project.target.contentStore;

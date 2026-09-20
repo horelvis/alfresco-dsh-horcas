@@ -1,13 +1,14 @@
 /** Tools de coherencia y forense de colgantes (read-only). Cierran el hueco detectado: explicar que nodo hay detras. */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { checkCoherence, coherenceBlocked, explainMissing } from '../domain/coherence.js';
 import { loadProject } from '../domain/project-config.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
-async function storeRoot(projectPath: string): Promise<string> {
-  const project = await loadProject(projectPath);
+async function storeRoot(projectPath: string, cwd: string): Promise<string> {
+  const project = await loadProject(projectPath, cwd);
   const storePath = project.source.contentStore?.path;
   if (!storePath) throw new Error('El proyecto no define source.contentStore.path');
   return storePath;
@@ -46,9 +47,10 @@ export function registerCoherenceTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const project = await loadProject(args.project);
-        const report = await checkCoherence(await storeRoot(args.project));
+      async execute(args, exec) {
+        const cwd = workspaceCwd(exec);
+        const project = await loadProject(args.project, cwd);
+        const report = await checkCoherence(await storeRoot(args.project, cwd));
         const policy = project.migration.coherencePolicy ?? 'FAIL_ON_DANGLING';
         return { ...report, policy, blocked: coherenceBlocked(policy, report.dangling) };
       },
@@ -79,8 +81,8 @@ export function registerCoherenceTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
-        const items = await explainMissing(await storeRoot(args.project));
+      async execute(args, exec) {
+        const items = await explainMissing(await storeRoot(args.project, workspaceCwd(exec)));
         return items.map((d) => ({
           contentUrl: d.contentUrl,
           sizeBytes: d.sizeBytes,

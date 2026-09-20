@@ -3,6 +3,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import { workspaceCwd } from '../infra/session.js';
 import { runWizard, validateProject } from '../domain/wizard.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -50,7 +51,7 @@ export function registerWizardTools(ctx: Context): void {
           return text(`${v.project}: ${v.note}\nRuta: ${v.hops.join(' ; ')}${v.yaml ? `\n\n${v.yaml}` : ''}`);
         },
       },
-      async execute(args) {
+      async execute(args, exec) {
         const result = await runWizard({
           inputs: {
             name: args.name,
@@ -93,9 +94,9 @@ export function registerWizardTools(ctx: Context): void {
           return text(v.valid ? 'VALIDO' : `INVALIDO:\n${v.errors.map((e) => `- ${e}`).join('\n')}`);
         },
       },
-      async execute(args) {
+      async execute(args, exec) {
         const { loadProject } = await import('../domain/project-config.js');
-        const project = await loadProject(args.project);
+        const project = await loadProject(args.project, workspaceCwd(exec));
         const errors = await validateProject(project.raw);
         return json({ valid: errors.length === 0, errors });
       },
