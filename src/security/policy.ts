@@ -44,9 +44,17 @@ export const WRITE_TOOLS = ['migrator_target', 'migrator_run_steps', 'migrator_b
 
 const KNOWN = new Set<string>([...READ_ONLY_TOOLS, ...WRITE_TOOLS]);
 
+import { stepById } from '../domain/steps.js';
+
 interface ToolExec {
   name: string;
   arguments?: unknown;
+  agent?: unknown;
+}
+
+/** Definicion de tool expuesta por el registro (lo que necesitamos para el motivo). */
+interface ToolDefinitionLike {
+  description?: string;
 }
 
 interface AskDecision {
@@ -61,6 +69,8 @@ type Decision = AskDecision | DenyDecision | { kind: 'allow' };
 
 interface LooseTools {
   guard(guard: (exec: ToolExec) => string | undefined): unknown;
+  /** El registro del arnes expone la definicion registrada (description, timeoutMs...). */
+  get?(name: string, agent?: unknown): ToolDefinitionLike | undefined;
 }
 
 /**
@@ -109,53 +119,41 @@ export interface SecurityContext {
 
 const isWrite = (name: string): boolean => (WRITE_TOOLS as readonly string[]).includes(name);
 
-/** Descripcion legible de cada paso (para el motivo de aprobacion). */
-const STEP_DESC: Record<string, string> = {
-  'preflight-target': 'conectividad/runtime del DESTINO (ssh/docker/compose)',
-  'backup-source-db': 'dump de la BD del ORIGEN (solo lectura del origen)',
-  'copy-content': 'copia del content store ORIGEN -> DESTINO',
-  'restore-target-db': 'restaura la BD en el DESTINO',
-  'schema-upgrade': 'arranca ACS en el DESTINO y aplica schema-upgrade',
-  reindex: 'regenera el indice del DESTINO (nunca se migra)',
-  'verify-target': 'comprueba la salud del DESTINO',
-};
-
-/** Motivo de aprobacion descriptivo para una escritura del migrador (se muestra al humano). */
-export function writeReason(name: string, args: unknown): string {
+/**
+ * Motivo de aprobacion descriptivo. Reutiliza la **descripcion de la propia tool** (registro del arnes)
+ * y, para `run_steps`, la **descripcion de cada paso** del catalogo: sin textos hardcodeados.
+ */
+export function writeReason(name: string, args: unknown, toolDescription?: string): string {
   const a = (args ?? {}) as Record<string, unknown>;
-  const project = a.project ? String(a.project) : '(proyecto no indicado)';
-  const mode = a.execute === true ? 'EXECUTE (va a escribir)' : 'dry-run (solo planifica)';
-  const extra: string[] = [];
-  if (a.delta === true) extra.push('copia incremental');
-  if (a.resume === true) extra.push('resume');
-  const suffix = extra.length ? ` (${extra.join(', ')})` : '';
-  switch (name) {
-    case 'migrator_backup':
-      return `Backup NO destructivo del ORIGEN de "${project}": dump de BD + copia del content store + manifiesto SHA-256 + config [${mode}]. No modifica el origen.`;
-    case 'migrator_copy_content':
-      return `Copia el content store del ORIGEN al DESTINO de "${project}" [${mode}]${suffix}.`;
-    case 'migrator_run_steps': {
-      const list = Array.isArray(a.steps) ? (a.steps as unknown[]).map((s) => String(s)) : [];
-      const detail = list.length ? list.map((s) => `${s} (${STEP_DESC[s] ?? 'paso'})`).join('; ') : '?';
-      return `Proyecto "${project}". Pasos en el DESTINO: ${detail}. ${
-        a.execute === true ? 'EXECUTE: escribe en el DESTINO.' : 'dry-run: NO ejecuta ningun comando; solo planifica.'
-      } El ORIGEN no se modifica.`;
-    }
-    case 'migrator_target':
-      return `Prepara/provisiona el DESTINO de "${project}" (Compose por hop) [${mode}].`;
-    case 'migrator_provision':
-      return `Provisiona el DESTINO de "${project}" en Docker Compose [${mode}].`;
-    case 'migrator_reindex':
-      return `Regenera el indice de busqueda del DESTINO de "${project}" (los indices no se migran) [${mode}]${suffix}.`;
-    case 'migrator_wizard':
-      return `Escribe el YAML del proyecto "${project}" en "${a.out ? String(a.out) : '(ruta por defecto)'}".`;
-    default:
-      return `La tool ${name} puede escribir en el DESTINO; requiere aprobacion.`;
+  const parts: string[] = [];
+  const head = toolDescription?.trim();
+  parts.push(head ? `${head.replace(/\.\s*$/, '')}.` : `La tool ${name} puede escribir en el DESTINO; requiere aprobacion.`);
+  if (a.project) parts.push(`Proyecto: ${String(a.project)}.`);
+  if (name === 'migrator_run_steps' && Array.isArray(a.steps)) {
+    const detail = (a.steps as unknown[])
+      .map((s) => {
+        const id = String(s);
+        return `${id} (${stepById(id)?.description ?? 'paso'})`;
+      })
+      .join('; ');
+    if (detail) parts.push(`Pasos: ${detail}.`);
   }
+  if ('execute' in a) {
+    parts.push(
+      a.execute === true
+        ? 'Modo: EXECUTE (escribe en el DESTINO).'
+        : 'Modo: dry-run (no ejecuta nada; solo planifica).',
+    );
+  }
+  if (a.delta === true) parts.push('Copia incremental.');
+  if (a.resume === true) parts.push('Reanuda (omite pasos ya OK).');
+  if (a.out) parts.push(`Salida: ${String(a.out)}.`);
+  parts.push('El ORIGEN no se modifica.');
+  return parts.join(' ');
 }
 
 /** Decide la politica de una llamada del migrador (exportada para tests). */
-export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
+export function decide(exec: ToolExec, options: PolicyOptions = {}, toolDescription?: string): Decision {
   const name = exec.name;
   if (name.startsWith('migrator_')) {
     if (!KNOWN.has(name)) {
@@ -168,7 +166,7 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}): Decision {
           reason: `Modo solo-lectura: '${name}' escribe en el DESTINO. Activa MIGRATOR_MODE=write para permitirlo.`,
         };
       }
-      return { kind: 'ask', reason: writeReason(name, exec.arguments) };
+      return { kind: 'ask', reason: writeReason(name, exec.arguments, toolDescription) };
     }
     return { kind: 'allow' };
   }
@@ -208,7 +206,9 @@ export function guardReason(exec: ToolExec): string | undefined {
 
 export function installSecurity(ctx: SecurityContext, options: PolicyOptions = policyOptionsFromEnv()): void {
   ctx.on('tools/pre-execute', async (exec, next) => {
-    const decision = decide(exec, options);
+    // Reutilizamos la descripcion registrada de la tool (sin hardcodear el motivo).
+    const description = ctx.tools.get?.(exec.name, exec.agent)?.description;
+    const decision = decide(exec, options, description);
     return decision.kind === 'allow' ? ((await next()) as Decision) : decision;
   });
   ctx.tools.guard(guardReason);

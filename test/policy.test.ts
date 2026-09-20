@@ -64,17 +64,32 @@ describe('politica de seguridad', () => {
     ]);
   });
 
-  it('el motivo de aprobacion es descriptivo (proyecto, pasos, execute)', () => {
-    expect(writeReason('migrator_provision', { project: '/p/gadex.yaml', execute: true })).toMatch(
-      /gadex\.yaml.*EXECUTE/s,
+  it('el motivo reutiliza la descripcion de la tool y de los pasos (sin hardcode)', () => {
+    const prov = writeReason(
+      'migrator_provision',
+      { project: '/p/gadex.yaml', execute: true },
+      'Provisiona el DESTINO en Docker Compose.',
     );
-    const run = writeReason('migrator_run_steps', { project: 'x', steps: ['copy-content', 'reindex'], execute: false });
-    expect(run).toContain('copy-content (copia del content store');
-    expect(run).toContain('reindex (regenera el indice');
+    expect(prov).toContain('Provisiona el DESTINO en Docker Compose');
+    expect(prov).toContain('/p/gadex.yaml');
+    expect(prov).toContain('EXECUTE');
+
+    const run = writeReason(
+      'migrator_run_steps',
+      { project: 'x', steps: ['copy-content', 'reindex'], execute: false },
+      'Ejecuta una composicion de pasos en el DESTINO.',
+    );
+    expect(run).toContain('copy-content (Copia el content store del origen al destino');
+    expect(run).toContain('reindex (Regenera el indice de busqueda del destino');
     expect(run).toContain('dry-run');
-    expect(run).toContain('NO ejecuta nada');
-    const decision = decide({ name: 'migrator_target', arguments: { project: '/p.yaml' } });
+
+    const decision = decide(
+      { name: 'migrator_target', arguments: { project: '/p.yaml' } },
+      {},
+      'Prepara el DESTINO para la migracion.',
+    );
     expect(decision.kind).toBe('ask');
+    expect((decision as { reason: string }).reason).toContain('Prepara el DESTINO');
     expect((decision as { reason: string }).reason).toContain('/p.yaml');
   });
 
