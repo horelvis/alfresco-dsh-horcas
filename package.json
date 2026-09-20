@@ -16,8 +16,7 @@
     "alfresco-dsh-horcas": "./alfresco-dsh-horcas"
   },
   "files": [
-    "dist/index.js",
-    "dist/index.d.ts",
+    "dist",
     "data",
     "cordis.yml",
     "alfresco-dsh-horcas"
@@ -28,7 +27,6 @@
     }
   },
   "scripts": {
-    "prepare": "npm run build",
     "build": "tsdown src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
