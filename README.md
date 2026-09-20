@@ -6,9 +6,15 @@ plugin aporta el **dominio** (rutas de versión, esquemas de referencia, recomen
 **encapsula la seguridad** (el origen es inmutable; la escritura solo va al destino y con aprobación).
 
 ## Instalación y uso (rápido)
-Desde **GitHub**, instala el comando global (clona y ejecuta el instalador):
+El repo es **privado**: necesitas `gh` autenticado o credenciales git. Clona y ejecuta el instalador:
 ```sh
-curl -fsSL https://raw.githubusercontent.com/horelvis/dsh-alfresco-migrator/main/bootstrap.sh | sh
+gh repo clone horelvis/dsh-alfresco-migrator ~/.local/share/alfresco-dsh-horcas -- --depth 1
+~/.local/share/alfresco-dsh-horcas/install.sh
+```
+O, en un solo paso (bootstrap remoto autenticado con `gh`):
+```sh
+curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
+  https://raw.githubusercontent.com/horelvis/dsh-alfresco-migrator/main/bootstrap.sh | sh
 ```
 O desde el repo ya clonado:
 ```sh

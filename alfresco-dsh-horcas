@@ -90,9 +90,12 @@ case "${1:-}" in
     cat <<'EOF'
 alfresco-dsh-horcas — agente de migracion de Alfresco (plugin dsh-alfresco-migrator) sobre DeepSeek Harness
 
-INSTALAR
-  # desde GitHub (clona y ejecuta el instalador):
-  curl -fsSL https://raw.githubusercontent.com/horelvis/dsh-alfresco-migrator/main/bootstrap.sh | sh
+INSTALAR (repo privado: gh autenticado o credenciales git)
+  gh repo clone horelvis/dsh-alfresco-migrator ~/.local/share/alfresco-dsh-horcas -- --depth 1
+  ~/.local/share/alfresco-dsh-horcas/install.sh
+  # o, en un paso (bootstrap remoto autenticado con gh):
+  curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
+    https://raw.githubusercontent.com/horelvis/dsh-alfresco-migrator/main/bootstrap.sh | sh
   # o, desde el repo ya clonado:
   ./install.sh                 dependencias + build + bundle en el perfil dsh + comando global
   cp .env.example .env         rellena credenciales del origen y modelo (o crea .env en tu proyecto)
