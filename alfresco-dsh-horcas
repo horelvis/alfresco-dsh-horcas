@@ -101,6 +101,17 @@ launch() {
   fi
 }
 
+# Lanza la UI web anadiendo hosts de confianza (el fence /api compara la authority).
+# Sin esto, abrir con `localhost` cuando el bind es `127.0.0.1` (o al reves) rompe el
+# directory picker con "Failed to fetch".
+launch_web() {
+  case " $* " in
+    *" --trusted-host "*) ;;
+    *) set -- "$@" --trusted-host localhost --trusted-host 127.0.0.1 ;;
+  esac
+  launch web "$@"
+}
+
 case "${1:-}" in
   help|-h|--help)
     cat <<'EOF'
@@ -131,7 +142,7 @@ EOF
     ;;
   web|--web)
     shift
-    launch web "$@"
+    launch_web "$@"
     ;;
   headless|--headless)
     shift
@@ -140,7 +151,7 @@ EOF
     ;;
   "")
     # Sin argumentos: abre la UI web (UX recomendada).
-    launch web
+    launch_web
     ;;
   *)
     [ "$#" -gt 0 ] || { usage; exit 2; }
