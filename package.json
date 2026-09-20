@@ -15,8 +15,14 @@
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
-    "data"
+    "data",
+    "cordis.yml"
   ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.yml"
+    }
+  },
   "scripts": {
     "build": "tsdown src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",

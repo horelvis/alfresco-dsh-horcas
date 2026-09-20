@@ -52,21 +52,39 @@ run_dsh() {
   exec npx --yes @deepseek-ai/dsh "$@"
 }
 
+# True si el plugin ya esta registrado como capa del perfil (`dsh plugin add`).
+plugin_installed() {
+  manifest="$HOME/.dsh/profiles/$1/package.json"
+  [ -f "$manifest" ] && grep -q '"dsh-plugin-alfresco-migrator"' "$manifest" 2>/dev/null
+}
+
+# Lanza un perfil: sin --patch si el plugin ya esta instalado en el; con --patch si no.
+launch() {
+  prof="$1"
+  shift
+  if plugin_installed "$prof"; then
+    run_dsh --profile "$prof" "$@"
+  else
+    run_dsh --profile "$prof" --patch "$ROOT/cordis.yml" "$@"
+  fi
+}
+
 case "${1:-}" in
   web|--web)
     shift
-    run_dsh --profile web --patch "$ROOT/cordis.yml" "$@"
+    launch web "$@"
     ;;
   headless|--headless)
     shift
     [ "$#" -gt 0 ] || { usage; exit 2; }
-    run_dsh --profile headless --patch "$ROOT/cordis.yml" "$@"
+    launch headless "$@"
     ;;
   "")
     usage
     exit 2
     ;;
   *)
-    run_dsh --profile "${DSH_PROFILE:-headless}" --patch "$ROOT/cordis.yml" "$@"
+    [ "$#" -gt 0 ] || { usage; exit 2; }
+    launch "${DSH_PROFILE:-headless}" "$@"
     ;;
 esac

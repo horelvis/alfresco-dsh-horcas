@@ -90,18 +90,30 @@ de intentos); complementa la memoria conversacional del arnés y permite reanuda
 > El conocimiento vive en **datos y skills**, no hardcodeado. Cambiar la matriz de upgrade o los
 > umbrales no requiere tocar código: se edita el YAML.
 
+## dsh y el plugin (no duplicar)
+dsh ya aporta el loop, la memoria de sesión, la aprobación y su UI, los presets de permisos, las skills,
+las tools nativas (bash/fs/`ask_user`/todo/subagent/web…) y el registro de plugins por perfil. El plugin
+solo añade **dominio** y no reimplementa nada de eso:
+- Se registra como **bundle** del perfil (`package.json` → `dsh.bundle.patch` → `cordis.yml`) con
+  `dsh plugin --profile <n> add <repo>`, o como overlay suelto con `dsh --patch ./cordis.yml`.
+- La aprobación es un **answerer** del seam `dsh-user-approval` (que no trae answerer propio); en el perfil
+  `web` responde la UI. El plugin solo impone la regla de dominio (las escrituras `migrator_*` requieren aprobación).
+- Las skills usan el registro `dsh-skill` (contenido generado desde `data/`); el provider de ficheros de dsh es otra vía.
+- `.migrator/*.jsonl` (checkpoints/experiencia) son artefactos de **dominio**, no memoria conversacional del arnés.
+
 ## Instalación y lanzamiento
 ```sh
-./install.sh    # dependencias + build + enlaza el lanzador `migrator` en ~/.local/bin
+./install.sh    # deps + build + registra el bundle en el perfil dsh (PROFILE, por defecto 'web') + enlaza `migrator`
 cp .env.example .env   # (install.sh lo crea si no existe) y rellena credenciales y modelo
 
 ./migrator.sh "analiza en solo lectura la migracion de data/projects/example.yaml"   # headless
 ./migrator.sh web [--port 8080] [--no-open]                                          # UI en el navegador
 migrator "analiza en solo lectura la migracion de data/projects/example.yaml"        # si ~/.local/bin esta en el PATH
 ```
-- `migrator.sh` carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh
-  con el patch del plugin: `--profile headless` (una tarea) o `--profile web` (UI). Usa el binario `dsh`
-  del PATH o, si no está, `npx @deepseek-ai/dsh`.
+- `migrator.sh` carga `.env`, construye `dist/` si falta, mapea el modelo a `DEEPSEEK_*` y lanza dsh:
+  `--profile headless` (una tarea) o `--profile web` (UI). Usa `dsh` del PATH o, si no está,
+  `npx @deepseek-ai/dsh`. Si el plugin ya está instalado en el perfil, lo carga como capa; si no,
+  cae a `--patch ./cordis.yml`.
 - Aprobación de escrituras por defecto **`deny`** (fail-closed): el agente solo lee. En **web** usa
   `MIGRATOR_APPROVAL=interactive` para aprobar en la UI (sin TTY delega en la UI); en headless,
   `allowlist`/`allow`.
