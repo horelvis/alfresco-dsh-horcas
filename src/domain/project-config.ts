@@ -1,6 +1,6 @@
 /** Carga de la configuracion de proyecto (subconjunto del schema de migracion). */
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import yaml from 'js-yaml';
 import { dataDir } from './data-dir.js';
@@ -120,7 +120,28 @@ export function projectCandidates(projectPath: string, cwd = process.cwd(), root
   return [...new Set(candidates)];
 }
 
-export async function loadProject(projectPath: string, cwd: string = process.cwd()): Promise<ProjectConfig> {
+/**
+ * Resuelve el proyecto **del workspace** (sin ruta): `MIGRATOR_PROJECT` si esta definido, o el unico
+ * YAML del workspace que no sea un compose. Reutiliza el concepto de workspace del arnes.
+ */
+export async function resolveWorkspaceProject(cwd: string, env: NodeJS.ProcessEnv = process.env): Promise<ProjectConfig> {
+  if (env.MIGRATOR_PROJECT) return loadProject(env.MIGRATOR_PROJECT, cwd);
+  const entries = await readdir(cwd).catch(() => [] as string[]);
+  const candidates = entries.filter((name) => /\.(?:ya?ml)$/i.test(name) && !/^(?:docker-)?compose/i.test(name));
+  if (candidates.length === 1) return loadProject(candidates[0] as string, cwd);
+  throw new Error(
+    candidates.length === 0
+      ? `No hay proyecto de migracion en el workspace (${cwd}). Crea el YAML o define MIGRATOR_PROJECT.`
+      : `Varios YAML en el workspace (${candidates.join(', ')}); pasa project o define MIGRATOR_PROJECT.`,
+  );
+}
+
+/**
+ * Carga un proyecto a partir de una ruta/nombre, o **del workspace** si se omite. Las rutas relativas
+ * se resuelven contra `cwd` (el cwd de la sesion).
+ */
+export async function loadProject(projectPath?: string, cwd: string = process.cwd()): Promise<ProjectConfig> {
+  if (projectPath === undefined || projectPath.trim() === '') return resolveWorkspaceProject(cwd);
   const candidates = projectCandidates(projectPath, cwd);
   const file = candidates.find((candidate) => existsSync(candidate));
   if (file === undefined) {

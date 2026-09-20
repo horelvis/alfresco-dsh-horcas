@@ -29,7 +29,6 @@ export function registerReindexTools(ctx: Context): void {
       description:
         'Regenera el indice de busqueda del DESTINO (nunca se migra): resuelve la estrategia, genera reindex.prefixes-file.json y lanza la Reindexing app (requiere aprobacion con execute=true).',
       parameters: {
-        project: { type: 'string', required: true },
         modelsDir: { type: 'string', description: 'Directorio de modelos XML del destino (para el prefixes-file)' },
         execute: { type: 'boolean', description: 'false = solo planificar (por defecto)' },
         expectedIndexable: { type: 'number', description: 'Nodos indexables esperados (para verificar)' },
@@ -55,7 +54,7 @@ export function registerReindexTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         if (args.execute === true) requireDistinctTarget(project);
         const last = project.target.version;
         const strategy = resolveReindexStrategy(project.target.search?.engine ?? 'opensearch', project.source.version, last);

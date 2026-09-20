@@ -36,7 +36,6 @@ export function registerWriteTools(ctx: Context): void {
       description:
         'Prepara el DESTINO para la migracion. Solo DESTINO (nunca el origen). Con execute=false valida y devuelve el plan (dry-run); con execute=true provisiona el Compose por hop (respetando MIGRATOR_DST_PROVISION).',
       parameters: {
-        project: { type: 'string', required: true, description: 'Ruta del YAML de proyecto' },
         execute: { type: 'boolean', description: 'true = provisiona el destino (requiere aprobacion); por defecto false' },
       },
       output: {
@@ -85,7 +84,7 @@ export function registerWriteTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const config = await loadProject(args.project, workspaceCwd(exec));
+        const config = await loadProject(undefined, workspaceCwd(exec));
         const hops = requireSupportedUpgradePath(config.source.version, config.target.version);
         const warnings = upgradePathWarnings(hops);
         const reference = await loadSchemaReference(config.source.version, dataDir());

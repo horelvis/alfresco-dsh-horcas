@@ -19,7 +19,6 @@ export function registerBackupTools(ctx: Context): void {
       description:
         'Backup no destructivo del ORIGEN (verifica-o-crea): dump de BD, copia del content store + manifiesto SHA-256 y snapshot de config. El origen no se modifica.',
       parameters: {
-        project: { type: 'string', required: true },
         execute: { type: 'boolean', description: 'false = planificar (dry-run, por defecto)' },
         backupDir: { type: 'string', description: 'Directorio de backup (defecto <state>/backup)' },
       },
@@ -44,7 +43,7 @@ export function registerBackupTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const backupDir = args.backupDir ?? `${stateDir()}/backup`;
         const result = await runBackup({
           project,

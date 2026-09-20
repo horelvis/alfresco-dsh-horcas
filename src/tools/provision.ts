@@ -47,7 +47,6 @@ export function registerProvisionTools(ctx: Context): void {
       description:
         'Provisiona el DESTINO en Docker Compose por hop (genera docker-compose-<hop>.yml y levanta el stack). Auto-skip con MIGRATOR_DST_PROVISION=auto|managed|external.',
       parameters: {
-        project: { type: 'string', required: true },
         execute: { type: 'boolean', description: 'false = solo generar los compose (por defecto)' },
         withShare: { type: 'boolean', description: 'incluir Share en el compose' },
       },
@@ -71,7 +70,7 @@ export function registerProvisionTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const mode = process.env.MIGRATOR_DST_PROVISION ?? 'auto';
         const host = destinationHost(project);
         const execute = args.execute === true;

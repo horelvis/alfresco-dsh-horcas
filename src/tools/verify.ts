@@ -36,7 +36,6 @@ export function registerVerifyTools(ctx: Context): void {
       description:
         'Verifica la paridad origen->destino tras la migracion: conteos JDBC (nodos, refs de contenido) y content store (ficheros/bytes). Read-only; no toca origen ni destino.',
       parameters: {
-        project: { type: 'string', required: true },
         tolerancePct: { type: 'number', description: 'Tolerancia porcentual por metrica (defecto 0 = exacto)' },
       },
       output: {
@@ -60,7 +59,7 @@ export function registerVerifyTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const host = destinationHost(project);
         const sourceStore = project.source.contentStore;
         const targetStore = project.target.contentStore;

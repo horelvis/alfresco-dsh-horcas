@@ -7,7 +7,7 @@ import { loadProject } from '../domain/project-config.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
-async function storeRoot(projectPath: string, cwd: string): Promise<string> {
+async function storeRoot(projectPath: string | undefined, cwd: string): Promise<string> {
   const project = await loadProject(projectPath, cwd);
   const storePath = project.source.contentStore?.path;
   if (!storePath) throw new Error('El proyecto no define source.contentStore.path');
@@ -21,7 +21,6 @@ export function registerCoherenceTools(ctx: Context): void {
       timeoutMs: 300_000,
       description: 'Coherencia DB<->content store del origen (refs, dangling, orphans, verdict). Read-only.',
       parameters: {
-        project: { type: 'string', required: true },
       },
       output: {
         schema: {
@@ -49,8 +48,8 @@ export function registerCoherenceTools(ctx: Context): void {
       },
       async execute(args, exec) {
         const cwd = workspaceCwd(exec);
-        const project = await loadProject(args.project, cwd);
-        const report = await checkCoherence(await storeRoot(args.project, cwd));
+        const project = await loadProject(undefined, cwd);
+        const report = await checkCoherence(await storeRoot(undefined, cwd));
         const policy = project.migration.coherencePolicy ?? 'FAIL_ON_DANGLING';
         return { ...report, policy, blocked: coherenceBlocked(policy, report.dangling) };
       },
@@ -64,7 +63,6 @@ export function registerCoherenceTools(ctx: Context): void {
       description:
         'Para cada referencia colgante, resuelve el nodo vivo/version/papelera y la ruta del documento (evidencia para decidir).',
       parameters: {
-        project: { type: 'string', required: true },
       },
       output: {
         schema: { type: 'array', items: { type: 'object', additionalProperties: true } },
@@ -82,7 +80,7 @@ export function registerCoherenceTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const items = await explainMissing(await storeRoot(args.project, workspaceCwd(exec)));
+        const items = await explainMissing(await storeRoot(undefined, workspaceCwd(exec)));
         return items.map((d) => ({
           contentUrl: d.contentUrl,
           sizeBytes: d.sizeBytes,

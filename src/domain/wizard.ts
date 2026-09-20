@@ -110,6 +110,8 @@ export async function buildProject(inputs: WizardInputs): Promise<Record<string,
 export interface WizardOptions {
   inputs?: WizardInputs;
   out?: string;
+  /** Directorio del workspace donde se escribe el YAML si no se da `out` (defecto: cwd). */
+  cwd?: string;
   force?: boolean;
   dryRun?: boolean;
 }
@@ -129,7 +131,7 @@ export async function runWizard(options: WizardOptions = {}): Promise<WizardResu
   const yamlText = yaml.dump(root, { noRefs: true, lineWidth: 120 });
 
   if (!options.dryRun) {
-    const destination = options.out ?? path.join('projects', `${project}.yaml`);
+    const destination = options.out ?? path.join(options.cwd ?? process.cwd(), `${project}.yaml`);
     await mkdir(path.dirname(destination), { recursive: true });
     await writeFile(destination, yamlText, 'utf8');
     return { project, yaml: yamlText, errors: [], preview: { hops, note: `escrito ${destination}` } };

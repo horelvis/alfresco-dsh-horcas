@@ -15,7 +15,7 @@ export function registerGuardTools(ctx: Context): void {
       timeoutMs: 15_000,
       description:
         'Comprueba que el DESTINO no sea el MISMO que el origen (misma base de datos o mismo content store). Read-only; el resultado es BLOCKER si comparten.',
-      parameters: { project: { type: 'string', required: true } },
+      parameters: {},
       output: {
         schema: {
           type: 'object',
@@ -33,7 +33,7 @@ export function registerGuardTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         return json(assessDistinctTarget(project));
       },
     }),

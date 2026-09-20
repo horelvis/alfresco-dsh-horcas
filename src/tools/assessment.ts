@@ -19,7 +19,6 @@ export function registerAssessmentTools(ctx: Context): void {
       description:
         'Inventario del ORIGEN desde la fuente de verdad: version/edicion (REST), nodos/auditoria/versiones/tamano BD (JDBC read-only) y ficheros/tamano del content store. Nunca usa indices de busqueda.',
       parameters: {
-        project: { type: 'string', required: true },
       },
       output: {
         schema: { type: 'object', additionalProperties: true },
@@ -34,7 +33,7 @@ export function registerAssessmentTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const assessment = await assessSource(project, {
           restUser: process.env.MIGRATOR_SRC_USER,
           restPassword: process.env.MIGRATOR_SRC_PASSWORD,

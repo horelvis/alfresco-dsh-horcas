@@ -37,7 +37,6 @@ export function registerMountTools(ctx: Context): void {
       description:
         'Analiza los montajes del content store en origen y destino (NAS/SAN/NFS/CIFS): clasifica el tipo y detecta mismo backing store o doble salto por red. Read-only.',
       parameters: {
-        project: { type: 'string', required: true },
       },
       output: {
         schema: {
@@ -73,7 +72,7 @@ export function registerMountTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const sourcePath = project.source.contentStore?.path ?? '';
         const targetPath = project.target.contentStore?.path ?? '';
         const host = destinationHost(project);

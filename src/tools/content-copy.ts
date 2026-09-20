@@ -28,7 +28,6 @@ export function registerContentCopyTools(ctx: Context): void {
       description:
         'Copia el content store del ORIGEN al DESTINO (rsync FS/SSH, aws s3 sync o azcopy). Con execute=true requiere aprobacion.',
       parameters: {
-        project: { type: 'string', required: true },
         execute: { type: 'boolean', description: 'false = solo planificar (por defecto)' },
         delta: { type: 'boolean', description: 'copia incremental (delta) para el cutover' },
         bandwidthKbps: { type: 'number', description: 'limite de ancho de banda para rsync' },
@@ -50,7 +49,7 @@ export function registerContentCopyTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         if (args.execute === true) requireDistinctTarget(project);
         const sourceRef = project.source.contentStore;
         const targetRef = project.target.contentStore;

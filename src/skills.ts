@@ -175,7 +175,7 @@ export function migrationPlaybookSkill(): SkillContent {
 No esperes un prompt perfecto ni inventes datos. Empieza por el **assessment** (fuente de verdad), propone
 un **plan de ejecucion** por fases y **pide** lo que falte por la via de preguntas del arnes
 (\`ask_user_question\`):
-- **proyecto**: ruta del YAML (o crealo con \`migrator_wizard\`); no hay proyecto por defecto.
+- **workspace/proyecto**: el proyecto vive en el **workspace** (un YAML en la carpeta); las tools lo resuelven solas (no pases ruta). Si no existe, crealo con \`migrator_wizard\` (lo escribe en el workspace).
 - **almacenamiento**: si origen y destino comparten datastore/LUN (NAS/SAN/VM) — \`migrator_mount_check\`.
 - **acceso**: BD/REST del origen, host SSH del destino, si el Postgres del destino es alcanzable.
 - **decisiones**: ruta de upgrade (hops), estrategia (C/D/I) y ventana de corte.

@@ -48,7 +48,7 @@ export function registerPlanningTools(ctx: Context): void {
       name: 'migrator_strategy',
       timeoutMs: 300_000,
       description: 'Recomienda estrategia de contenido/BD/indice segun el perfil del repositorio (C1-C5/D1-D2/I1-I2).',
-      parameters: { project: { type: 'string', required: true } },
+      parameters: {},
       output: {
         schema: { type: 'object', additionalProperties: true },
         render: (_args, value) => {
@@ -57,7 +57,7 @@ export function registerPlanningTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const inventory = await sourceInventory(project);
         return json(recommendStrategy(strategyInput(project, inventory)));
       },
@@ -70,7 +70,6 @@ export function registerPlanningTools(ctx: Context): void {
       timeoutMs: 300_000,
       description: 'Estima la ventana de migracion por fases (assessment/pre-staging/cutover/post), cuello y riesgos.',
       parameters: {
-        project: { type: 'string', required: true },
         changeRatePerDay: { type: 'number', description: 'Tasa de cambio diaria (defecto 0.01)' },
         parallelism: { type: 'number', description: 'Paralelismo (defecto 1)' },
       },
@@ -85,7 +84,7 @@ export function registerPlanningTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const inventory = await sourceInventory(project);
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const input: EstimationInput = {
@@ -109,7 +108,6 @@ export function registerPlanningTools(ctx: Context): void {
       timeoutMs: 30_000,
       description: 'Genera la checklist pre/post-cutover segun version/edicion destino y motor de busqueda.',
       parameters: {
-        project: { type: 'string', required: true },
         format: { type: 'string', enum: ['md', 'json'], description: 'md (defecto) o json' },
       },
       output: {
@@ -120,7 +118,7 @@ export function registerPlanningTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const input: ChecklistInput = {
           project: project.project,
@@ -143,13 +141,13 @@ export function registerPlanningTools(ctx: Context): void {
       name: 'migrator_jira_export',
       timeoutMs: 15_000,
       description: 'Exporta epica + hops a un CSV importable por Jira (RFC 4180) en <state>/jira-import.csv.',
-      parameters: { project: { type: 'string', required: true } },
+      parameters: {},
       output: {
         schema: { type: 'object', additionalProperties: false, properties: { file: { type: 'string' }, rows: { type: 'number' } } },
         render: (_args, value) => text(`Escrito ${(value as { file: string }).file} (${(value as { rows: number }).rows} filas)`),
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const epicName = `Migracion ${project.project} a ACS ${project.target.version}`;
         const rows: JiraRow[] = [

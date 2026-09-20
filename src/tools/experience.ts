@@ -26,6 +26,8 @@ import {
 } from '../domain/experience.js';
 import { gatherSourceFingerprint } from '../domain/fingerprint.js';
 import { dataDir } from '../domain/data-dir.js';
+import { loadProject } from '../domain/project-config.js';
+import { workspaceCwd } from '../infra/session.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
@@ -37,7 +39,6 @@ export function registerExperienceTools(ctx: Context): void {
       description:
         'Registra un INTENTO de una migracion de PRUEBA (clone/TEST) en su campana: resultado, pasos y punto de reanudacion (para restaurar y reanudar).',
       parameters: {
-        project: { type: 'string', required: true },
         version: { type: 'string', required: true, description: 'Version ACS del origen ensayado' },
         targetVersion: { type: 'string', required: true },
         stage: { type: 'string', enum: ['clone', 'test', 'prod'], description: 'clone o test (por defecto test)' },
@@ -68,13 +69,14 @@ export function registerExperienceTools(ctx: Context): void {
           );
         },
       },
-      async execute(args) {
+      async execute(args, exec) {
+        const projectName = (await loadProject(undefined, workspaceCwd(exec))).project;
         const stage = (args.stage ?? 'test') as Stage;
         const outcome = (args.outcome ?? 'ok') as AttemptOutcome;
         const fingerprint = await gatherSourceFingerprint(args.version, dataDir());
         const now = new Date().toISOString();
         const attempt: ExperienceAttempt = {
-          id: args.runId ?? `${campaignId(args.project, stage)}-${Date.now()}`,
+          id: args.runId ?? `${campaignId(projectName, stage)}-${Date.now()}`,
           at: now,
           outcome,
           failedStep: args.failedStep,
@@ -89,7 +91,7 @@ export function registerExperienceTools(ctx: Context): void {
           notes: args.notes,
         };
         const record = await recordAttempt(stateDir(), {
-          project: args.project,
+          project: projectName,
           stage,
           sourceVersion: args.version,
           targetVersion: args.targetVersion,
@@ -114,7 +116,6 @@ export function registerExperienceTools(ctx: Context): void {
       timeoutMs: 15_000,
       description: 'Devuelve la campana de ensayo del proyecto (opcionalmente por stage) y su historial de intentos.',
       parameters: {
-        project: { type: 'string', required: true },
         stage: { type: 'string', enum: ['clone', 'test', 'prod'] },
       },
       output: {
@@ -124,8 +125,9 @@ export function registerExperienceTools(ctx: Context): void {
           return text(v.found ? `intentos=${v.attempts} validada=${v.validated}\n${v.history}` : 'Sin experiencia registrada');
         },
       },
-      async execute(args) {
-        const records = await loadExperiences(stateDir(), args.project);
+      async execute(args, exec) {
+        const projectName = (await loadProject(undefined, workspaceCwd(exec))).project;
+        const records = await loadExperiences(stateDir(), projectName);
         const filtered = args.stage ? records.filter((r) => r.stage === args.stage) : records;
         const latest = filtered.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).at(-1);
         return latest
@@ -142,7 +144,6 @@ export function registerExperienceTools(ctx: Context): void {
       description:
         'Compara el origen actual con el ultimo ensayo validado y devuelve el drift (BLOCKER impide ejecutar en PROD).',
       parameters: {
-        project: { type: 'string', required: true },
         version: { type: 'string', required: true, description: 'Version ACS del origen actual' },
       },
       output: {
@@ -163,8 +164,9 @@ export function registerExperienceTools(ctx: Context): void {
           return text(`Ensayo ${v.rehearsalId} · blocking=${v.blocking}\n${lines.join('\n') || '(sin drift)'}`);
         },
       },
-      async execute(args) {
-        const rehearsal = await latestRehearsal(stateDir(), args.project);
+      async execute(args, exec) {
+        const projectName = (await loadProject(undefined, workspaceCwd(exec))).project;
+        const rehearsal = await latestRehearsal(stateDir(), projectName);
         if (!rehearsal) {
           return { hasRehearsal: false, rehearsalId: '', blocking: true, drift: [] };
         }

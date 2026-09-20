@@ -226,6 +226,9 @@ alfresco-dsh-horcas web [--port 8080] [--no-open]                               
   `ask_user_question`), y **deniega** ejecución/mutación (`bash`/`pwsh`, `write`/`edit`, `web_*`).
   Ampliar: `MIGRATOR_GUARDRAIL_ALLOW=bash,read`; uso general: `MIGRATOR_GUARDRAIL=false`.
 - Requiere `dsh` y Node ≥ 20 (o `npx`). `DSH_PROFILE` cambia el perfil de dsh.
+- **El proyecto vive en el workspace**: las tools `migrator_*` resuelven el YAML del workspace
+  (`MIGRATOR_PROJECT` o el único `*.yaml` de la carpeta) y las rutas relativas contra el **cwd de la
+  sesión**; no hace falta pasar `project`. `migrator_wizard` lo crea en el workspace.
 
 ## Desarrollo
 ```sh

@@ -21,7 +21,6 @@ export function registerReviewerTools(ctx: Context): void {
       description:
         'Master Reviewer LLM: revisa el plan/assessment/coherencia del proyecto y emite APPROVE/APPROVE_WITH_CONDITIONS/REJECT/ABSTAIN con hallazgos. Los datos se anonimizan antes de salir al LLM.',
       parameters: {
-        project: { type: 'string', required: true },
         stage: { type: 'string', enum: ['PLAN', 'COHERENCE', 'ASSESSMENT', 'STATUS'], description: 'etapa (defecto PLAN)' },
       },
       output: {
@@ -33,7 +32,7 @@ export function registerReviewerTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const hops = resolveUpgradePath(project.source.version, project.target.version);
         const assessment = await assessSource(project, {
           restUser: process.env.MIGRATOR_SRC_USER,

@@ -72,6 +72,7 @@ export function registerWizardTools(ctx: Context): void {
           },
           dryRun: args.dryRun !== false,
           out: args.out,
+          cwd: workspaceCwd(exec),
           force: args.force === true,
         });
         return json({ project: result.project, errors: result.errors, hops: result.preview.hops, note: result.preview.note, yaml: result.yaml });
@@ -83,10 +84,8 @@ export function registerWizardTools(ctx: Context): void {
     defineTool({
       name: 'migrator_validate',
       timeoutMs: 15_000,
-      description: 'Valida un objeto YAML de proyecto contra el JSON Schema (sin ejecutar nada).',
-      parameters: {
-        project: { type: 'string', required: true, description: 'Ruta del YAML a validar' },
-      },
+      description: 'Valida el YAML de proyecto del workspace contra el JSON Schema (sin ejecutar nada).',
+      parameters: {},
       output: {
         schema: { type: 'object', additionalProperties: false, properties: { valid: { type: 'boolean' }, errors: { type: 'array', items: { type: 'string' } } } },
         render: (_args, value) => {
@@ -96,7 +95,7 @@ export function registerWizardTools(ctx: Context): void {
       },
       async execute(args, exec) {
         const { loadProject } = await import('../domain/project-config.js');
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const errors = await validateProject(project.raw);
         return json({ valid: errors.length === 0, errors });
       },

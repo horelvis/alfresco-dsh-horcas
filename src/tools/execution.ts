@@ -57,7 +57,6 @@ export function registerExecutionTools(ctx: Context): void {
       description:
         'Ejecuta una composicion de pasos en el DESTINO (aprobacion requerida). En stage=prod exige ensayo validado. Soporta resume y dry-run.',
       parameters: {
-        project: { type: 'string', required: true },
         steps: { type: 'array', items: { type: 'string' }, required: true, description: 'Ids en orden, p.ej. [preflight-target, backup-source-db]' },
         execute: { type: 'boolean', description: 'false = dry-run (por defecto)' },
         resume: { type: 'boolean', description: 'omite pasos ya OK del run' },
@@ -83,7 +82,7 @@ export function registerExecutionTools(ctx: Context): void {
         },
       },
       async execute(args, exec) {
-        const project = await loadProject(args.project, workspaceCwd(exec));
+        const project = await loadProject(undefined, workspaceCwd(exec));
         const execute = args.execute === true;
         if (execute) requireDistinctTarget(project);
         const state = stateDir();
@@ -174,9 +173,8 @@ export function registerExecutionTools(ctx: Context): void {
     defineTool({
       name: 'migrator_run_status',
       timeoutMs: 15_000,
-      description: 'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos). Acepta ruta del YAML o nombre de proyecto.',
+      description: 'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos) del proyecto del workspace.',
       parameters: {
-        project: { type: 'string', required: true, description: 'Ruta del YAML de proyecto o nombre de proyecto' },
         runId: { type: 'string', required: true },
       },
       output: {
@@ -185,15 +183,10 @@ export function registerExecutionTools(ctx: Context): void {
           text((value as Array<{ step: string; status: string; detail?: string }>).map((c) => `- ${c.step}: ${c.status}${c.detail ? ` (${c.detail})` : ''}`).join('\n') || '(sin checkpoints)'),
       },
       async execute(args, exec) {
-        const checkpoints = await loadCheckpoints(stateDir(), args.project, args.runId);
+        const config = await loadProject(undefined, workspaceCwd(exec));
+        const checkpoints = await loadCheckpoints(stateDir(), config.project, args.runId);
         const latest = new Map<string, (typeof checkpoints)[number]>();
         for (const c of checkpoints) latest.set(c.step, c);
-        if (latest.size === 0 && (args.project.endsWith('.yaml') || args.project.endsWith('.yml'))) {
-          // El nombre de proyecto (no la ruta) es la clave de los checkpoints: normalizamos.
-          const config = await loadProject(args.project, workspaceCwd(exec));
-          const byName = await loadCheckpoints(stateDir(), config.project, args.runId);
-          for (const c of byName) latest.set(c.step, c);
-        }
         return [...latest.values()].map((c) => ({ ...c }));
       },
     }),
