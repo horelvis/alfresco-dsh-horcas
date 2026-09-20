@@ -79,9 +79,10 @@ describe('politica de seguridad', () => {
       { project: 'x', steps: ['copy-content', 'reindex'], execute: false },
       'Ejecuta una composicion de pasos en el DESTINO.',
     );
-    expect(run).toContain('- copy-content — Copia el content store del origen al destino');
-    expect(run).toContain('- reindex — Regenera el indice de busqueda del destino');
+    expect(run).toContain('copy-content — Copia el content store del origen al destino');
+    expect(run).toContain('reindex — Regenera el indice de busqueda del destino');
     expect(run).toContain('dry-run');
+    expect(run).not.toContain('\n');
 
     const decision = decide(
       { name: 'migrator_target', arguments: { project: '/p.yaml' } },

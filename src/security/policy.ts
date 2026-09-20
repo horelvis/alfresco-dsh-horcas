@@ -125,26 +125,28 @@ const isWrite = (name: string): boolean => (WRITE_TOOLS as readonly string[]).in
  */
 export function writeReason(name: string, args: unknown, toolDescription?: string): string {
   const a = (args ?? {}) as Record<string, unknown>;
-  const lines: string[] = [];
+  const parts: string[] = [];
   const clean = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.]\s*$/, '');
   const head = toolDescription ? clean(toolDescription) : `La tool ${name} puede escribir en el DESTINO`;
-  lines.push(`${head}.`);
-  if (a.project) lines.push(`Proyecto: ${String(a.project)}`);
+  parts.push(`${head}.`);
+  if (a.project) parts.push(`Proyecto: ${String(a.project)}`);
   const dryRun = a.execute !== true;
   if (name === 'migrator_run_steps' && Array.isArray(a.steps)) {
-    lines.push(`Pasos (${dryRun ? 'dry-run, no ejecuta nada' : 'EXECUTE, escribe en el DESTINO'}):`);
-    for (const step of a.steps as unknown[]) {
-      const id = String(step);
-      lines.push(`- ${id} — ${clean(stepById(id)?.description ?? 'paso')}`);
-    }
+    const pasos = (a.steps as unknown[])
+      .map((step) => {
+        const id = String(step);
+        return `${id} — ${clean(stepById(id)?.description ?? 'paso')}`;
+      })
+      .join('; ');
+    parts.push(`Pasos (${dryRun ? 'dry-run, no ejecuta nada' : 'EXECUTE, escribe en el DESTINO'}): ${pasos}`);
   } else if ('execute' in a) {
-    lines.push(`Modo: ${dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)'}`);
+    parts.push(`Modo: ${dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)'}`);
   }
-  if (a.delta === true) lines.push('Copia incremental');
-  if (a.resume === true) lines.push('Reanuda (omite pasos ya OK)');
-  if (a.out) lines.push(`Salida: ${String(a.out)}`);
-  if (name !== 'migrator_wizard') lines.push('El ORIGEN no se modifica.');
-  return lines.join('\n');
+  if (a.delta === true) parts.push('Copia incremental');
+  if (a.resume === true) parts.push('Reanuda (omite pasos ya OK)');
+  if (a.out) parts.push(`Salida: ${String(a.out)}`);
+  if (name !== 'migrator_wizard') parts.push('El ORIGEN no se modifica.');
+  return parts.join(' · ');
 }
 
 /** Decide la politica de una llamada del migrador (exportada para tests). */
