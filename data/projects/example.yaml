@@ -37,6 +37,8 @@ target:
   version: "26.2"
   edition: CE
   deployment: compose
+  # URL REST del DESTINO (verificacion de version del hop / salud). Override: MIGRATOR_DST_BASE_URL.
+  baseUrl: http://192.168.100.51:8080/alfresco
   database:
     engine: postgresql
   contentStore:

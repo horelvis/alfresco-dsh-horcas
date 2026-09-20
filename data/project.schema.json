@@ -159,6 +159,7 @@
         "version": { "type": "string", "pattern": "^2[3-9](\\.|$)|^26" },
         "edition": { "enum": ["CE", "EE"] },
         "deployment": { "enum": ["compose", "helm"] },
+        "baseUrl": { "type": "string", "format": "uri", "description": "URL REST del DESTINO (para verificar version y salud)." },
         "database": { "$ref": "#/$defs/database" },
         "contentStore": { "$ref": "#/$defs/contentStore" },
         "search": { "$ref": "#/$defs/search" },

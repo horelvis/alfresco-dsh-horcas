@@ -37,6 +37,8 @@ export interface ProjectConfig {
     version: string;
     edition?: string;
     deployment?: string;
+    /** URL REST del DESTINO (verificacion de version/salud). */
+    baseUrl?: string;
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; volume?: string };
     search?: { engine?: string };
@@ -86,6 +88,7 @@ export function parseProjectYaml(text: string): ProjectConfig {
       version: String(target.version ?? ''),
       edition: target.edition ? String(target.edition) : undefined,
       deployment: target.deployment ? String(target.deployment) : undefined,
+      baseUrl: target.baseUrl ? String(target.baseUrl) : undefined,
       database: target.database as ProjectDatabase | undefined,
       contentStore: target.contentStore as ProjectConfig['target']['contentStore'],
       search: target.search as ProjectConfig['target']['search'],

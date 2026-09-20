@@ -98,7 +98,7 @@ export function checkHopAlignment(
  */
 export async function assertDestinationHop(project: ProjectConfig, state: string, hops: Hop[]): Promise<void> {
   if (hops.length <= 1) return;
-  const baseUrl = process.env.MIGRATOR_DST_BASE_URL;
+  const baseUrl = project.target.baseUrl ?? process.env.MIGRATOR_DST_BASE_URL;
   const detected = baseUrl
     ? await discoverRest(
         baseUrl,
