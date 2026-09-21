@@ -185,6 +185,11 @@ export async function validateCompose(host: HostRef, content: string): Promise<s
   return result.exitCode === 0 ? undefined : result.stderr.trim() || result.stdout.trim() || 'compose invalido';
 }
 
+/** Crea (en el DESTINO) las carpetas de datos de la version antes de montarlas. */
+export async function ensureDataDirs(host: HostRef, dataDir: string): Promise<void> {
+  await runShell(host, `mkdir -p "${dataDir}/alf-data" "${dataDir}/pg-data"`);
+}
+
 /** Escribe y levanta el stack del hop. */
 export async function provisionCompose(
   request: ComposeRequest,

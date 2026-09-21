@@ -12,6 +12,7 @@ import {
   destinationRunning,
   projectToComposeRequest,
   provisionCompose,
+  ensureDataDirs,
   shouldSkipProvision,
   stopRunningStacks,
   validateCompose,
@@ -55,7 +56,7 @@ export function registerProvisionTools(ctx: Context): void {
         dstDir: {
           type: 'string',
           description:
-            'Carpeta base en el DESTINO para los datos de la version (content store en <dstDir>/alf-data y BD en <dstDir>/pg-data). Si falta, se usa MIGRATOR_DST_DIR.',
+            'Carpeta base EN EL HOST DESTINO (por SSH, p.ej. 192.168.100.51) para los datos de la version: content store en <dstDir>/alf-data y BD en <dstDir>/pg-data. NO es una ruta local. Si falta, se usa MIGRATOR_DST_DIR.',
         },
       },
       output: {
@@ -109,7 +110,8 @@ export function registerProvisionTools(ctx: Context): void {
             if (invalid) throw new Error(`Compose invalido para el hop ${hop.to}: ${invalid}`);
           }
         }
-        // Ya validado: para los stacks del destino (p. ej. un 26.2 que no toca) para liberar 8080.
+        // Ya validado: crea las carpetas de datos en el DESTINO y para los stacks que no tocan (liberar 8080).
+        if (execute && dstDir) await ensureDataDirs(host, dstDir);
         const stopped = execute ? await stopRunningStacks(host) : [];
         const memTotal = await dockerMemTotal(host);
         const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
