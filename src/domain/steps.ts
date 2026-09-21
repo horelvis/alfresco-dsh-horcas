@@ -7,7 +7,7 @@
  * Overrides de entorno (identicos al core): `MIGRATOR_DB_DUMP_CMD` ({out}), `MIGRATOR_DB_RESTORE_CMD`
  * ({in}), `MIGRATOR_REINDEX_CMD` ({prefixesFile},{dbUrl}), `MIGRATOR_DST_PROVISION`.
  */
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { HostRef } from '../infra/exec.js';
 import { runShell, runShellWithInput, substitute, type ExecResult } from '../infra/exec.js';
@@ -105,6 +105,13 @@ const backupSourceDb: StepDefinition = {
     await mkdir(path.dirname(out), { recursive: true });
     const outcome = requireResult('backup-source-db', await runShell(ctx.source ?? { name: 'local' }, substitute(override, { out })));
     if (!outcome.ok) return outcome;
+    // Un checkpoint OK con dump vacio/ausente rompe el restore: se comprueba el artefacto.
+    try {
+      const info = await stat(out);
+      if (!info.isFile() || info.size === 0) return fail('backup-source-db', `dump vacio en ${out}`);
+    } catch {
+      return fail('backup-source-db', `no se creo el dump ${out}`);
+    }
     // El directorio de VERSION del DESTINO guarda la copia de la BBDD: <dstDir>/db/<name>.dump
     const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
     if (dstDir && ctx.destination.name !== 'local') {
@@ -187,7 +194,8 @@ async function mountGuard(source: string, target: string): Promise<string | unde
 /** `restore-target-db`: restaura el dump en la BD del DESTINO. */
 const restoreTargetDb: StepDefinition = {
   id: 'restore-target-db',
-  description: 'Restaura el dump logico en la BD del destino (D2).',
+  description:
+    'Restaura el dump logico en la BD del destino (D2) con `docker exec pg_restore` dentro del contenedor (el host no necesita pg_restore). Usa el dump del DESTINO si existe; si no, el local. MIGRATOR_DB_RESTORE_CMD es opcional.',
   writes: true,
   async run(ctx, params) {
     const inFile = String(params.inFile ?? `${ctx.state}/${ctx.runId}/db.dump`);
@@ -207,8 +215,8 @@ const restoreTargetDb: StepDefinition = {
     const envFlag = password ? `-e PGPASSWORD='${password}' ` : '';
     // 1) Si el dump ya esta en el DESTINO (directorio de version), se restaura desde ahi (docker exec < file).
     const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
-    if (dstDir) {
-      const remote = `${dstDir}/db/${name}.dump`;
+    const remoteCandidates = dstDir ? [`${dstDir}/db/${name}.dump`, `${dstDir}/db.dump`] : [];
+    for (const remote of remoteCandidates) {
       const probe = await runShell(ctx.destination, `test -s "${remote}"`);
       if (probe.exitCode === 0) {
         const command = `docker exec -i ${envFlag}${container} pg_restore -c --if-exists --no-owner -U ${user} -d ${name} < "${remote}"`;
@@ -228,8 +236,11 @@ const restoreTargetDb: StepDefinition = {
       const outcome = requireResult('restore-target-db', await runShellWithInput(ctx.destination, command, dump));
       return { ...outcome, command: undefined };
     }
-    const command = `pg_restore -c --if-exists -h ${db?.host ?? 'localhost'} -p ${db?.port ?? 5432} -U ${user} -d ${name} "${inFile}"`;
-    return requireResult('restore-target-db', await runShell(ctx.destination, command));
+    return fail(
+      'restore-target-db',
+      `No hay dump para restaurar: ni en el DESTINO (${remoteCandidates.join(', ') || 'sin dstDir'}) ni local (${inFile}). ` +
+        'Re-ejecuta backup-source-db (sin resume, o borra su checkpoint) para regenerarlo.',
+    );
   },
 };
 
