@@ -61,6 +61,13 @@ Escritura (marcadas `ask`; requieren aprobación humana; solo destino):
 `verify-target`. Cada paso es idempotente, se registra en `.migrator/checkpoints.jsonl` y respeta los
 overrides `MIGRATOR_DB_DUMP_CMD`/`RESTORE_CMD`/`REINDEX_CMD`/`MIGRATOR_DST_PROVISION`.
 
+### Upgrade físico por hop
+En una ruta multi-hop el DESTINO se sube **versión a versión**, reutilizando el mismo content store y la
+misma BBDD copiados a un **directorio de versión**, y dejando que ACS aplique el **auto-update de esquema**
+al arrancar. Incluye la migración de **versión mayor de PostgreSQL** (`pg_restore` lógico, `pg_upgrade` o
+`pgautoupgrade`). Procedimiento completo y mapeo con las tools:
+[`docs/upgrade-por-hop.md`](docs/upgrade-por-hop.md).
+
 ## Flujo ensayo → producción
 Una migración nunca se ejecuta directo en PROD: primero se ensaya en un **clon de producción o TEST**.
 El ensayo es una **campaña con varios intentos**: ejecutas en PRE, falla un paso, restauras y **reanudas

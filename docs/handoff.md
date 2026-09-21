@@ -34,6 +34,11 @@ MIGRATOR_MODE=write alfresco-dsh-horcas web --no-open --port 8087
 - **Backup dry-run** detecta artefactos preexistentes (antes `CONFIG` siempre salía "a escribir").
 - `bash`/`pwsh`/`write` permitidos + sandbox `read-only` (todo borrado pasa por humano).
 - Tests: **182 passed / 4 skipped**.
+- **Documentado el upgrade físico por hop** (`docs/upgrade-por-hop.md` + sección en `README.md`): ciclo
+  directorio-de-versión → provisionar versión del salto → smoke → parar → reconfigurar al dato final →
+  auto-update → check, **incluida la migración de versión mayor de PostgreSQL** (`pg_restore` lógico,
+  `pg_upgrade`, `pgautoupgrade`). Pendiente de automatizar: `provision-hop`, `smoke-boot`,
+  `db-version-migrate` y orquestar `schema-upgrade`.
 
 ## Bloqueado / decisiones pendientes
 1. El destino está en **26.2**, pero la **guarda de hops** exige el destino en **7.4** para el primer hop

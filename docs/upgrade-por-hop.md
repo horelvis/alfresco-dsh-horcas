@@ -1,0 +1,61 @@
+# Upgrade físico por hop (procedimiento operativo)
+
+Ruta obligatoria: **7.1.0 → 7.4 → 25.3 → 26.2** (no se salta de versión). En cada hop el DESTINO se sube a
+la versión del salto, reutilizando **el mismo content store y la misma BBDD** (copiados a un *directorio de
+versión*), y se deja que ACS aplique el **auto-update de esquema** al arrancar.
+
+El harness **no** sustituye tu despliegue real (`alfresco-dst`): verifica la versión del hop (guarda de
+hops, leída por REST), ejecuta/valida los pasos y registra el progreso. La provisión del stack es del
+operador (o de un modo `provision` que parchee tu `compose.yaml`).
+
+> Este documento es un **borrador de trabajo**: se ajustará durante el ensayo.
+
+## Ciclo por hop
+
+1. **Crear el directorio de la versión** destino (`<base>/<versión>/`) y **copiar ahí** el content store y
+   la BBDD (partiendo del backup del origen, no del origen en vivo).
+2. **Proveer la versión del salto**: imagen ACS del hop (`alfresco-content-repository-community:<versión>`)
+   en el despliegue real, manteniendo el bind del content store y el volumen de la BBDD.
+3. **Levantar y comprobar** que arranca OK (smoke test: readiness + log sin errores de esquema).
+4. **Parar** y **reconfigurar** el stack apuntando al content store y la BBDD de la **versión final**
+   (los datos copiados en el paso 1).
+5. **Levantar** y dejar correr el **auto-update de esquema** nativo (Database schema version → `Started`).
+6. **Check de comprobación** (readiness REST + conteo de nodos) y **siguiente versión**.
+
+## PostgreSQL: versiones distintas entre hops
+
+El salto de **versión mayor** de PostgreSQL (p. ej. 7.4 ≈ PG 13/14/15 → 26.2 = PG 17) no se puede hacer
+"en caliente": hay que migrar la BBDD. Opciones, de más simple a más compleja:
+
+| Vía | Cuándo | Herramienta |
+|---|---|---|
+| **Restore lógico** | Siempre que partas de un **backup lógico** (`pg_dump -Fc`) | `pg_restore` (lo que ya hace `restore-target-db`) o `psql` para dumps SQL. **Cross-versión soportado.** |
+| **`pg_upgrade`** | Partes de un **data directory** físico y tienes los binarios de ambas mayores | `pg_upgrade` (`--link` o `--copy`); wrapper Debian/Ubuntu `pg_upgradecluster`. |
+| **`pg_upgrade` en contenedor** | Igual, pero sin instalar binarios en el host | `pgautoupgrade/pgautoupgrade` (arranca y migra el volumen solo) o `tianon/docker-postgres-upgrade`. |
+| **Migrador de datos** | Quieres reescribir esquema/datos a la vez | `pgloader` (cross-versión y desde otras BD). |
+| **Globals** | Roles/tablespaces/permisos | `pg_dumpall --globals-only` + `psql` en el destino. |
+
+Recomendación para este ensayo: como la BBDD viene de un **dump lógico** (`MIGRATOR_DB_DUMP_CMD` →
+`db.dump`), la vía es **`pg_restore`** en la versión del hop; no necesitas `pg_upgrade` salvo que quieras
+conservar el volumen físico entre mayores.
+
+## Mapeo con las tools del harness
+
+| Paso del ciclo | Tool / mecanismo | Estado |
+|---|---|---|
+| 1. Directorio de versión + copia | — | **Pendiente** (hoy `copy-content` copia origen→destino directo). |
+| 2. Proveer la versión del salto | `migrator_provision` | Parcial: genera un stack **genérico**; no tu `alfresco-dst`. |
+| 3. Smoke test | `migrator_verify_target` / `migrator_mount_check` | Parcial: solo readiness/conectividad. |
+| 4. Reconfigurar al dato final | — | **Pendiente**. |
+| 5. Auto-update de esquema | `schema-upgrade` | Parcial: **no-op** sin `MIGRATOR_SCHEMA_UPGRADE_CMD` (lo orquesta el stack). |
+| 6. Check + siguiente | `verify-target`, `migrator_schema_check` | OK. |
+| PG de versión distinta | `restore-target-db` (`pg_restore`) | Parcial: vía lógica; sin paso de `pg_upgrade`. |
+| Guarda de hops | `domain/hops.ts` (`MIGRATOR_DST_BASE_URL`) | OK (fail-closed). |
+
+## Pendiente de automatizar (candidatos)
+
+- `provision-hop`: levantar la versión del salto sobre el directorio de versión.
+- `smoke-boot`: arrancar/verificar/parar el hop antes de apuntar al dato final.
+- `db-version-migrate`: `pg_upgrade` **o** restore lógico según la mayor de PG.
+- `schema-upgrade`: **orquestar** el auto-update en lugar de delegar en el stack.
+- Modo `provision` que **parchee el tag de imagen** en el `compose.yaml` real (opt-in).
