@@ -54,3 +54,56 @@ fi
 if ! command -v dsh >/dev/null 2>&1; then
   echo "[instalador] AVISO: 'dsh' no esta en el PATH; instala DeepSeek Harness (npm i -g @deepseek-ai/dsh)." >&2
 fi
+
+# ---------------------------------------------------------------------------
+# Contexto entre chats: habilita la BUSQUEDA en sesiones previas (session_search) en el patch del
+# perfil. El bundle base trae `session-query-sqlite` con `openAt: never` (busqueda deshabilitada) y no
+# incluye la tool; aqui se sobrescribe con un indice durable y se inserta la tool por RUTA ABSOLUTA al
+# fork (el perfil resuelve bundles desde el dsh global, que no tiene el paquete).
+# ---------------------------------------------------------------------------
+DSH_HARNESS_DIR="${DSH_HARNESS_DIR:-}"
+if [ -z "$DSH_HARNESS_DIR" ] && [ -n "${DSH_BIN:-}" ]; then
+  DSH_HARNESS_DIR=$(printf '%s' "$DSH_BIN" | sed -e 's/^node //' -e 's#/apps/cli/.*##')
+fi
+DSH_HARNESS_DIR="${DSH_HARNESS_DIR:-$HOME/git/deepseek-harness}"
+TOOL_TSQ="$DSH_HARNESS_DIR/packages/session-query/tool-session-query/lib/index.js"
+
+# true si el patch del perfil ya tiene entradas (ignora comentarios y un `[]`).
+patch_has_content() {
+  [ -f "$1" ] || return 1
+  grep -vE '^[[:space:]]*(#|$)' "$1" | grep -vqE '^\[\][[:space:]]*$'
+}
+
+configure_profile_session_search() {
+  prof="$1"
+  [ -d "$HOME/.dsh/profiles/$prof" ] || return 0
+  patch="$HOME/.dsh/profiles/$prof/cordis.patch.yml"
+  if [ -f "$patch" ] && grep -q 'tool-session-query' "$patch" 2>/dev/null; then
+    echo "[instalador] perfil '$prof': session-search ya configurado."
+    return 0
+  fi
+  if [ ! -f "$TOOL_TSQ" ]; then
+    echo "[instalador] AVISO: no existe $TOOL_TSQ; session-search NO se habilita en '$prof'." >&2
+    echo "[instalador]        define DSH_HARNESS_DIR con la ruta del fork y reinstala." >&2
+    return 0
+  fi
+  if patch_has_content "$patch"; then
+    printf '\n' >> "$patch"
+  else
+    printf '# Patch generado por install.sh: busqueda en sesiones previas + tools.\n' > "$patch"
+  fi
+  cat >> "$patch" <<EOF
+- id: session-query-sqlite
+  config:
+    path: $HOME/.dsh/session-query.sqlite
+    openAt: first-search
+
+- insert:
+    - id: tool-session-query
+      name: $TOOL_TSQ
+EOF
+  echo "[instalador] perfil '$prof': session-search habilitado ($TOOL_TSQ)."
+}
+
+configure_profile_session_search "$PROFILE"
+[ "$PROFILE" = "headless" ] || configure_profile_session_search headless

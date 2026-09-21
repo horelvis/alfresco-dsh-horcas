@@ -40,6 +40,14 @@ MIGRATOR_MODE=write alfresco-dsh-horcas web --no-open --port 8087
   `pg_upgrade`, `pgautoupgrade`). Pendiente de automatizar: `provision-hop`, `smoke-boot`,
   `db-version-migrate` y orquestar `schema-upgrade`.
 
+## Contexto entre chats (session_search)
+El agente puede leer sesiones previas del mismo workspace (`session_search`, `session_event_read`,
+`session_trace`). `install.sh` lo configura en el patch del perfil (`~/.dsh/profiles/<perfil>/cordis.patch.yml`):
+sobrescribe `session-query-sqlite` con `openAt: first-search` + índice durable, e inserta
+`@deepseek-ai/dsh-tool-session-query` por ruta absoluta al fork (el perfil resuelve bundles desde el dsh
+global). El guardrail ya permite esas tools. Pendiente: `journal` + `migrator_resume` (estado durable
+"dónde estamos").
+
 ## Bloqueado / decisiones pendientes
 1. El destino está en **26.2**, pero la **guarda de hops** exige el destino en **7.4** para el primer hop
    (bloquea el salto directo). → **Desplegar el destino en 7.4** antes del primer hop.
