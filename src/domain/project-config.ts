@@ -44,6 +44,8 @@ export interface ProjectConfig {
     baseUrl?: string;
     /** Carpeta base EN EL HOST DESTINO para los datos del hop (content store + pg-data). */
     dataDir?: string;
+    /** Imagen EXACTA del repositorio en el DESTINO (p.ej. alfresco/alfresco-content-repository-community:7.4.2). */
+    acsImage?: string;
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; volume?: string };
     search?: { engine?: string };
@@ -95,6 +97,7 @@ export function parseProjectYaml(text: string): ProjectConfig {
       deployment: target.deployment ? String(target.deployment) : undefined,
       baseUrl: target.baseUrl ? String(target.baseUrl) : undefined,
       dataDir: target.dataDir ? String(target.dataDir) : undefined,
+      acsImage: target.acsImage ? String(target.acsImage) : undefined,
       database: target.database as ProjectDatabase | undefined,
       contentStore: target.contentStore as ProjectConfig['target']['contentStore'],
       search: target.search as ProjectConfig['target']['search'],

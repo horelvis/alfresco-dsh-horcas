@@ -28,16 +28,28 @@ describe('compose', () => {
   it('genera el compose con postgres/activemq/search/alfresco y sin secretos embebidos', () => {
     const yaml = renderCompose(request);
     expect(yaml).toContain('image: postgres:15');
-    expect(yaml).toContain('alfresco/alfresco-activemq:5.18.6');
+    // Tags EXACTOS (los genericos no existen en el registro).
+    expect(yaml).toContain('alfresco/alfresco-activemq:6.2.9-jre17-rockylinux8');
     expect(yaml).toContain('opensearchproject/opensearch');
-    expect(yaml).toContain('alfresco/alfresco-content-repository-community:26.2');
+    expect(yaml).toContain('alfresco/alfresco-content-repository-community:26.2.0');
     expect(yaml).toContain('${POSTGRES_PASSWORD}');
     expect(yaml).toContain('jdbc:postgresql://postgres:5432/alfresco');
   });
 
+  it('7.x usa la serie ActiveMQ 5.18.7 y repo con patch .0', () => {
+    const yaml = renderCompose({ ...request, acsVersion: '7.4' });
+    expect(yaml).toContain('alfresco/alfresco-activemq:5.18.7-jre17-rockylinux8');
+    expect(yaml).toContain('alfresco/alfresco-content-repository-community:7.4.0');
+  });
+
+  it('acsImage (exacta) manda sobre edition+version', () => {
+    const yaml = renderCompose({ ...request, acsImage: 'alfresco/alfresco-content-repository-community:7.4.2' });
+    expect(yaml).toContain('alfresco/alfresco-content-repository-community:7.4.2');
+  });
+
   it('EE usa la imagen enterprise y share opcional', () => {
     const yaml = renderCompose({ ...request, edition: 'EE', withShare: true });
-    expect(yaml).toContain('quay.io/alfresco/alfresco-content-repository:26.2');
+    expect(yaml).toContain('quay.io/alfresco/alfresco-content-repository:26.2.0');
     expect(yaml).toContain('alfresco/alfresco-share:26.2');
   });
 

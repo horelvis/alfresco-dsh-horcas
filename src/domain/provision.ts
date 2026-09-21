@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { runShell, runShellWithInput, type ExecResult, type HostRef } from '../infra/exec.js';
 import { memLimitForCompose, type AlfrescoMemory } from './memory.js';
+import { parseVersion } from './versions.js';
 import type { ProjectConfig } from './project-config.js';
 
 export interface ComposeRequest {
@@ -31,10 +32,17 @@ export interface ComposeRequest {
    * Desktop (macOS) un bind para PGDATA suele fallar por permisos ("could not change permissions").
    */
   pgBind?: boolean;
+  /** Imagen EXACTA del repositorio (si se aporta, manda sobre `edition`+`acsVersion`). */
+  acsImage?: string;
 }
 
 const POSTGRES_IMAGE = 'postgres:15';
-const ACTIVEMQ_IMAGE = 'alfresco/alfresco-activemq:5.18.6';
+// Los tags de ActiveMQ NO son "genericos": en el registro solo existen los -jre17-rockylinux8.
+const ACTIVEMQ_5 = 'alfresco/alfresco-activemq:5.18.7-jre17-rockylinux8';
+const ACTIVEMQ_6 = 'alfresco/alfresco-activemq:6.2.9-jre17-rockylinux8';
+
+/** ActiveMQ segun la version de ACS destino (26.x usa la serie 6.x). */
+const activemqImage = (acsVersion: string): string => ((parseVersion(acsVersion)[0] ?? 0) >= 26 ? ACTIVEMQ_6 : ACTIVEMQ_5);
 
 const dbImage = (engine: string | undefined): string => {
   switch ((engine ?? '').toLowerCase()) {
@@ -55,7 +63,10 @@ const searchImage = (engine: string | undefined): string => {
 
 const repositoryImage = (edition: string, version: string): string => {
   const repository = edition === 'EE' ? 'quay.io/alfresco/alfresco-content-repository' : 'alfresco/alfresco-content-repository-community';
-  return `${repository}:${version}`;
+  // Los tags no son genericos: `7.4`/`25.3`/`26.2` NO existen; hay que usar el patch exacto (`7.4.2`,
+  // `25.3.0`, `26.2.0`). Si la version no trae patch, se completa con `.0`.
+  const exact = version.split('.').length >= 3 ? version : `${version}.0`;
+  return `${repository}:${exact}`;
 };
 
 const jdbcUrl = (db: ComposeRequest['database'], host: string): string => {
@@ -87,7 +98,7 @@ export function renderCompose(request: ComposeRequest): string {
       : '      - alfresco-db:/var/lib/postgresql/data',
   );
   lines.push('  activemq:');
-  lines.push(`    image: ${ACTIVEMQ_IMAGE}`);
+  lines.push(`    image: ${activemqImage(request.acsVersion)}`);
   lines.push('    environment:');
   lines.push('      ACTIVEMQ_ADMIN_LOGIN: ${ACTIVEMQ_ADMIN_LOGIN}');
   lines.push('      ACTIVEMQ_ADMIN_PASSWORD: ${ACTIVEMQ_ADMIN_PASSWORD}');
@@ -101,7 +112,7 @@ export function renderCompose(request: ComposeRequest): string {
     lines.push('      plugins.security.disabled: "true"');
   }
   lines.push('  alfresco:');
-  lines.push(`    image: ${repositoryImage(request.edition, request.acsVersion)}`);
+  lines.push(`    image: ${request.acsImage ?? repositoryImage(request.edition, request.acsVersion)}`);
   lines.push(`    mem_limit: ${request.memory ? memLimitForCompose(request.memory) : '2560m'}`);
   lines.push('    depends_on:');
   lines.push('      - postgres');
@@ -301,7 +312,11 @@ export const INFRA_SERVICES = 'postgres activemq search';
 /** Escribe el compose en el DESTINO (para poder arrancar Alfresco mas tarde con `-f <fichero>`). */
 export async function writeComposeRemote(host: HostRef, remoteFile: string, content: string): Promise<void> {
   const b64 = Buffer.from(content, 'utf8').toString('base64');
-  await runShell(host, `mkdir -p "$(dirname "${remoteFile}")" && printf '%s' '${b64}' | base64 -d > "${remoteFile}"`);
+  // NUNCA se sobrescribe un compose existente (puede ser el validado por el operador).
+  await runShell(
+    host,
+    `mkdir -p "$(dirname "${remoteFile}")" && if [ ! -f "${remoteFile}" ]; then printf '%s' '${b64}' | base64 -d > "${remoteFile}"; fi`,
+  );
 }
 
 /** Escribe y levanta el stack del hop. */
@@ -349,5 +364,6 @@ export function projectToComposeRequest(
     memory,
     dataDir,
     pgBind,
+    ...(project.target.acsImage ? { acsImage: project.target.acsImage } : {}),
   };
 }

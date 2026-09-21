@@ -162,6 +162,7 @@
         "deployment": { "enum": ["compose", "helm"] },
         "baseUrl": { "type": "string", "format": "uri", "description": "URL REST del DESTINO (para verificar version y salud)." },
         "dataDir": { "type": "string", "description": "Carpeta base EN EL HOST DESTINO para los datos del hop (content store en <dataDir>/alf-data y BD en <dataDir>/pg-data)." },
+        "acsImage": { "type": "string", "description": "Imagen EXACTA del repositorio en el DESTINO (p.ej. alfresco/alfresco-content-repository-community:7.4.2); manda sobre edition+version." },
         "database": { "$ref": "#/$defs/database" },
         "contentStore": { "$ref": "#/$defs/contentStore" },
         "search": { "$ref": "#/$defs/search" },
