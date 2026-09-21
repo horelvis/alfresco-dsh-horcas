@@ -295,6 +295,15 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
   return commands;
 }
 
+/** Servicios de INFRAESTRUCTURA (no Alfresco): se levantan primero, antes del restore. */
+export const INFRA_SERVICES = 'postgres activemq search';
+
+/** Escribe el compose en el DESTINO (para poder arrancar Alfresco mas tarde con `-f <fichero>`). */
+export async function writeComposeRemote(host: HostRef, remoteFile: string, content: string): Promise<void> {
+  const b64 = Buffer.from(content, 'utf8').toString('base64');
+  await runShell(host, `mkdir -p "$(dirname "${remoteFile}")" && printf '%s' '${b64}' | base64 -d > "${remoteFile}"`);
+}
+
 /** Escribe y levanta el stack del hop. */
 export async function provisionCompose(
   request: ComposeRequest,
@@ -303,12 +312,20 @@ export async function provisionCompose(
 ): Promise<{ file: string; started: boolean; detail: string }> {
   const file = await writeCompose(request, workDir);
   const secrets = await ensureStackSecrets(workDir);
-  // El compose se envia por STDIN (`-f -`): asi funciona igual en local y en el DESTINO remoto, donde la
-  // ruta local no existe. Los secretos van como entorno del comando (no se exponen en la salida).
-  const command = `${composeEnvPrefix(secrets)} docker compose -p "${request.projectName}" -f - up -d --remove-orphans`;
-  const result = await runShellWithInput(host, command, renderCompose(request));
+  const content = renderCompose(request);
+  // ORDEN NATURAL: se levanta SOLO la infraestructura (postgres/activemq/search). Alfresco se arranca
+  // despues del restore (paso `schema-upgrade`), para que no cree una raiz espuria sobre una BD vacia.
+  // Si hay `dataDir`, el compose queda escrito en el DESTINO para poder arrancar Alfresco luego con -f.
+  let composeArg = '-f -';
+  if (request.dataDir) {
+    const remote = `${request.dataDir}/compose/docker-compose-${slug(request.acsVersion)}.yml`;
+    await writeComposeRemote(host, remote, content);
+    composeArg = `-f "${remote}"`;
+  }
+  const command = `${composeEnvPrefix(secrets)} docker compose ${composeArg} -p "${request.projectName}" up -d ${INFRA_SERVICES}`;
+  const result = await runShellWithInput(host, command, request.dataDir ? '' : content);
   if (result.exitCode !== 0) {
-    throw new Error(`docker compose up fallido (exit=${result.exitCode}): ${result.stderr}`);
+    throw new Error(`docker compose up (infra) fallido (exit=${result.exitCode}): ${result.stderr}`);
   }
   return { file, started: true, detail: result.stdout.trim() };
 }

@@ -248,17 +248,49 @@ const restoreTargetDb: StepDefinition = {
 /** `schema-upgrade`: arranca el ACS destino y espera a que aplique los schema patches. */
 const schemaUpgrade: StepDefinition = {
   id: 'schema-upgrade',
-  description: 'Levanta el ACS destino y espera al schema-upgrade nativo (Database schema version / Started).',
+  description:
+    'Arranca Alfresco SOBRE la BD ya restaurada y espera al auto-update de esquema. La infra debe estar levantada y la BD restaurada (orden natural).',
   writes: true,
   async run(ctx) {
     const override = process.env.MIGRATOR_SCHEMA_UPGRADE_CMD;
     if (ctx.dryRun) {
       return skipped('schema-upgrade', 'dry-run');
     }
-    if (!override) {
-      return skipped('schema-upgrade', 'sin MIGRATOR_SCHEMA_UPGRADE_CMD (lo orquesta el stack destino)');
+    if (override) {
+      return requireResult('schema-upgrade', await runShell(ctx.destination, override));
     }
-    return requireResult('schema-upgrade', await runShell(ctx.destination, override));
+    // Sin override: arranca SOLO el servicio `alfresco` (la BD ya esta restaurada) y espera a que responda.
+    const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
+    const project = process.env.MIGRATOR_DST_COMPOSE_PROJECT ?? ctx.project.project;
+    const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
+    const detected = baseUrl
+      ? await discoverRest(
+          baseUrl,
+          process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER,
+          process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD,
+        )
+      : undefined;
+    const minor = (detected?.version ?? ctx.project.target.version).split('.').slice(0, 2).join('.');
+    const file = process.env.MIGRATOR_DST_COMPOSE_FILE ?? (dstDir ? `${dstDir}/compose/docker-compose-${minor}.yml` : undefined);
+    if (!file) {
+      return skipped('schema-upgrade', 'sin compose del hop: define MIGRATOR_DST_COMPOSE_FILE o target.dataDir');
+    }
+    const up = await runShell(ctx.destination, `docker compose -f "${file}" -p "${project}" up -d alfresco`);
+    if (up.exitCode !== 0) {
+      return fail('schema-upgrade', up.stderr.trim() || 'no se pudo arrancar el servicio alfresco');
+    }
+    if (!baseUrl) {
+      return ok('schema-upgrade', 'alfresco arrancado (sin URL para esperar readiness)');
+    }
+    const discovery = `${baseUrl.replace(/\/$/, '')}/api/discovery`;
+    for (let attempt = 1; attempt <= 60; attempt++) {
+      const probe = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${process.env.MIGRATOR_DST_USER ?? 'admin'}:${process.env.MIGRATOR_DST_PASSWORD ?? 'admin'}" "${discovery}"`);
+      if (probe.stdout.trim().startsWith('2')) {
+        return ok('schema-upgrade', `alfresco arrancado sobre la BD restaurada (discovery http=${probe.stdout.trim()})`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    }
+    return fail('schema-upgrade', 'alfresco no respondio (discovery) tras el arranque');
   },
 };
 
@@ -304,16 +336,25 @@ const verifyTarget: StepDefinition = {
   description: 'Comprueba salud del destino (readiness REST y conteo de nodos por JDBC).',
   writes: false,
   async run(ctx) {
-    const baseUrl = process.env.MIGRATOR_DST_BASE_URL;
+    const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
     if (!baseUrl) {
       return skipped('verify-target', 'sin MIGRATOR_DST_BASE_URL');
     }
-    const url = `${baseUrl.replace(/\/$/, '')}/api/-default-/public/alfresco/versions/1/probes/-ready-`;
-    const result = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" "${url}"`);
-    const code = result.stdout.trim();
-    return result.exitCode === 0 && code.startsWith('2')
-      ? ok('verify-target', `ready http=${code}`)
-      : fail('verify-target', `ready http=${code || 'sin respuesta'}`);
+    const base = baseUrl.replace(/\/$/, '');
+    const creds = `${process.env.MIGRATOR_DST_USER ?? 'admin'}:${process.env.MIGRATOR_DST_PASSWORD ?? 'admin'}`;
+    // Readiness: el repositorio responde (discovery).
+    const ready = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${creds}" "${base}/api/discovery"`);
+    const readyCode = ready.stdout.trim();
+    // COHERENCIA app<->BD: `-root-` debe resolver (si Alfresco arranco sobre una BD vacia y luego se
+    // restauro, la raiz da 404 aunque el endpoint este "ready").
+    const root = await runShell(ctx.destination, `curl -s -o /dev/null -w "%{http_code}" -u "${creds}" "${base}/api/-default-/public/alfresco/versions/1/nodes/-root-"`);
+    const rootCode = root.stdout.trim();
+    const detail = `discovery http=${readyCode || 'sin respuesta'} · root http=${rootCode || 'sin respuesta'}`;
+    if (!readyCode.startsWith('2')) return fail('verify-target', detail);
+    if (!rootCode.startsWith('2')) {
+      return fail('verify-target', `${detail} — la raiz NO resuelve: app y BD desalineadas (¿Alfresco arranco antes del restore?)`);
+    }
+    return ok('verify-target', detail);
   },
 };
 
