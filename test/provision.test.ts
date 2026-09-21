@@ -3,6 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  composeImages,
+  composeProjectName,
   ensureStackSecrets,
   globalProperties,
   isPrereleaseImage,
@@ -103,6 +105,23 @@ describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
       commands.some((c) => c.includes('--env-file /tmp/demo.env') && c.includes('-f /tmp/docker-compose-26.2.yml up -d')),
     ).toBe(true);
     expect(commands.join(' ')).not.toMatch(/POSTGRES_PASSWORD=/);
+  });
+});
+
+describe('composeProjectName', () => {
+  it('quita los puntos (nombre de proyecto invalido) y normaliza', () => {
+    expect(composeProjectName('gadex-7.1.0')).toBe('gadex-7-1-0');
+    expect(composeProjectName('Gadex 7.1.0')).toBe('gadex-7-1-0');
+    expect(composeProjectName('...')).toBe('alfresco');
+  });
+});
+
+describe('composeImages', () => {
+  it('incluye repo, activemq, db y search con tags exactos', () => {
+    const images = composeImages(request);
+    expect(images).toContain('postgres:15');
+    expect(images).toContain('alfresco/alfresco-activemq:6.2.9-jre17-rockylinux8');
+    expect(images).toContain('alfresco/alfresco-content-repository-community:26.2.0');
   });
 });
 

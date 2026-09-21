@@ -16,9 +16,11 @@ import {
   provisionCompose,
   ensureDataDirs,
   ensureStackSecrets,
+  composeImages,
   globalProperties,
   imageRegistry,
   isPrereleaseImage,
+  missingImages,
   registryLogin,
   manualCommands,
   writeStackConfig,
@@ -174,6 +176,14 @@ export function registerProvisionTools(ctx: Context): void {
           for (const { hop, request } of requests) {
             const invalid = await validateCompose(host, renderCompose(request));
             if (invalid) throw new Error(`Compose invalido para el hop ${hop.to}: ${invalid}`);
+          }
+          // PREFLIGHT de imagenes: si alguna no existe en el registro, se falla ANTES de parar/levantar.
+          const images = [...new Set(requests.flatMap(({ request }) => composeImages(request)))];
+          const missing = await missingImages(host, images);
+          if (missing.length > 0) {
+            throw new Error(
+              `Imagenes inexistentes en el registro: ${missing.join(', ')}. Corrige target.acsImage/edition o usa tags GA existentes.`,
+            );
           }
           // Ya validado: crea las carpetas y el alfresco-global.properties (config de BD) en el DESTINO.
           if (dstDir) {

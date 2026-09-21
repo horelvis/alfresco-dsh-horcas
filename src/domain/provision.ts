@@ -89,7 +89,7 @@ export function renderCompose(request: ComposeRequest): string {
   const user = db?.user ?? 'alfresco';
   const search = (request.search?.engine ?? 'OPENSEARCH').toUpperCase();
   const lines: string[] = [];
-  lines.push(`name: ${request.projectName}`);
+  lines.push(`name: ${composeProjectName(request.projectName)}`);
   lines.push('services:');
   lines.push('  postgres:');
   lines.push(`    image: ${dbImage(db?.engine)}`);
@@ -319,11 +319,42 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
   }
   commands.push(`printf '%s' '${b64}' | base64 -d | sudo tee ${file} >/dev/null`);
   if (dstDir) commands.push(`sudo cp ${globalFile} "${dstDir}/config/alfresco-global.properties"`);
-  commands.push(`sudo docker compose -p "${request.projectName}" down --remove-orphans`);
+  commands.push(`sudo docker compose -p "${composeProjectName(request.projectName)}" down --remove-orphans`);
   commands.push(
-    `sudo DOCKER_CONFIG=$(d=$(mktemp -d) && printf '{}' > "$d/config.json" && echo "$d") docker compose --env-file ${envFile} -p "${request.projectName}" -f ${file} up -d --remove-orphans`,
+    `sudo DOCKER_CONFIG=$(d=$(mktemp -d) && printf '{}' > "$d/config.json" && echo "$d") docker compose --env-file ${envFile} -p "${composeProjectName(request.projectName)}" -f ${file} up -d --remove-orphans`,
   );
   return commands;
+}
+
+/**
+ * Nombre de proyecto docker compose VALIDO: solo `[a-z0-9_-]` (los puntos de `gadex-7.1.0` NO valen).
+ */
+export const composeProjectName = (name: string): string => {
+  const slugged = name
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .replace(/-+$/, '')
+    .slice(0, 63);
+  return slugged || 'alfresco';
+};
+
+/** Imagenes que referencia el compose del hop (para preflight de existencia en el registro). */
+export function composeImages(request: ComposeRequest): string[] {
+  const images = [dbImage(request.database?.engine), activemqImage(request.acsVersion), searchImage(request.search?.engine)];
+  images.push(request.acsImage ?? repositoryImage(request.edition, request.acsVersion));
+  if (request.withShare) images.push(`${request.edition === 'EE' ? 'quay.io/alfresco/alfresco-share' : 'alfresco/alfresco-share'}:${request.acsVersion}`);
+  return images;
+}
+
+/** Imagenes que NO existen en el registro (preflight con `docker manifest inspect` en el DESTINO). */
+export async function missingImages(host: HostRef, images: string[]): Promise<string[]> {
+  const missing: string[] = [];
+  for (const image of images) {
+    const result = await runShell(host, `docker manifest inspect ${image} >/dev/null 2>&1`);
+    if (result.exitCode !== 0) missing.push(image);
+  }
+  return missing;
 }
 
 /** Servicios de INFRAESTRUCTURA (no Alfresco): se levantan primero, antes del restore. */
@@ -357,7 +388,7 @@ export async function provisionCompose(
     await writeComposeRemote(host, remote, content);
     composeArg = `-f "${remote}"`;
   }
-  const command = `${composeEnvPrefix(secrets)} docker compose ${composeArg} -p "${request.projectName}" up -d ${INFRA_SERVICES}`;
+  const command = `${composeEnvPrefix(secrets)} docker compose ${composeArg} -p "${composeProjectName(request.projectName)}" up -d ${INFRA_SERVICES}`;
   const result = await runShellWithInput(host, command, request.dataDir ? '' : content);
   if (result.exitCode !== 0) {
     throw new Error(`docker compose up (infra) fallido (exit=${result.exitCode}): ${result.stderr}`);
