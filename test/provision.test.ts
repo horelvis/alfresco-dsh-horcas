@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { manualCommands, renderCompose, shouldSkipProvision, stopTargets } from '../src/domain/provision.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {
+  ensureStackSecrets,
+  manualCommands,
+  renderCompose,
+  shouldSkipProvision,
+  stopTargets,
+} from '../src/domain/provision.js';
 import { computeAlfrescoMemory, type MemoryData } from '../src/domain/memory.js';
 import { evaluateUpgradeLog, waitForUpgrade } from '../src/domain/schema-upgrade.js';
 
@@ -42,12 +51,16 @@ describe('compose', () => {
     expect(() => renderCompose({ ...request, search: { engine: 'solr' } })).toThrow();
   });
 
-  it('con dataDir monta el content store y la BD en la carpeta del DESTINO (bind, sin volumenes con nombre)', () => {
+  it('con dataDir monta el content store en bind y la BD en volumen (evita permisos en macOS)', () => {
     const yaml = renderCompose({ ...request, dataDir: '/data/alfresco-dst-v2' });
     expect(yaml).toContain('/data/alfresco-dst-v2/alf-data:/usr/local/tomcat/alf_data');
-    expect(yaml).toContain('/data/alfresco-dst-v2/pg-data:/var/lib/postgresql/data');
+    expect(yaml).toContain('alfresco-db:/var/lib/postgresql/data');
     expect(yaml).not.toContain('alfresco-content:');
-    expect(yaml).not.toContain('volumes:\n  alfresco-db:');
+  });
+
+  it('con dataDir + pgBind monta tambien la BD en la carpeta del DESTINO', () => {
+    const yaml = renderCompose({ ...request, dataDir: '/data/alfresco-dst-v2', pgBind: true });
+    expect(yaml).toContain('/data/alfresco-dst-v2/pg-data:/var/lib/postgresql/data');
   });
 
   it('auto-skip: external siempre, auto solo si corre, managed nunca', () => {
@@ -59,12 +72,28 @@ describe('compose', () => {
 });
 
 describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
-  it('incluye carpetas, compose en base64, down y up con sudo', () => {
+  it('copia stack.env y usa --env-file, sin exponer secretos', () => {
     const commands = manualCommands({ ...request, dataDir: '/data/v2' }, '/data/v2');
-    expect(commands[0]).toContain('mkdir -p "/data/v2/alf-data" "/data/v2/pg-data"');
+    expect(commands[0]).toContain('scp .migrator/provision/stack.env');
+    expect(commands.some((c) => c.includes('mkdir -p "/data/v2/alf-data"'))).toBe(true);
     expect(commands.some((c) => c.includes('base64 -d') && c.includes('tee /tmp/docker-compose-26.2.yml'))).toBe(true);
     expect(commands.some((c) => c.includes('docker compose -p "demo" down'))).toBe(true);
-    expect(commands.some((c) => c.includes('docker compose -p "demo" -f /tmp/docker-compose-26.2.yml up -d'))).toBe(true);
+    expect(
+      commands.some((c) => c.includes('--env-file /tmp/demo.env') && c.includes('-f /tmp/docker-compose-26.2.yml up -d')),
+    ).toBe(true);
+    expect(commands.join(' ')).not.toMatch(/POSTGRES_PASSWORD=/);
+  });
+});
+
+describe('ensureStackSecrets', () => {
+  it('genera secretos una vez y los reutiliza', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'prov-'));
+    const first = await ensureStackSecrets(dir);
+    expect(first.POSTGRES_PASSWORD).toMatch(/^[0-9a-f]{24}$/);
+    expect(first.ACTIVEMQ_ADMIN_LOGIN).toBe('admin');
+    const second = await ensureStackSecrets(dir);
+    expect(second.POSTGRES_PASSWORD).toBe(first.POSTGRES_PASSWORD);
+    await rm(dir, { recursive: true, force: true });
   });
 });
 

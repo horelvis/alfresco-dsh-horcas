@@ -7,7 +7,8 @@
  *
  * Portado de ComposeFileBuilder/ComposeTargetProvisioner/ProvisionTargetStep.
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { runShell, runShellWithInput, type ExecResult, type HostRef } from '../infra/exec.js';
 import { memLimitForCompose, type AlfrescoMemory } from './memory.js';
@@ -25,6 +26,11 @@ export interface ComposeRequest {
   memory?: AlfrescoMemory;
   /** Carpeta base en el DESTINO para los datos de la version (content store + BD). Si falta, volumenes. */
   dataDir?: string;
+  /**
+   * Montar la BD como BIND en `<dataDir>/pg-data`. Por defecto `false` (volumen con nombre): en Docker
+   * Desktop (macOS) un bind para PGDATA suele fallar por permisos ("could not change permissions").
+   */
+  pgBind?: boolean;
 }
 
 const POSTGRES_IMAGE = 'postgres:15';
@@ -75,7 +81,11 @@ export function renderCompose(request: ComposeRequest): string {
   lines.push(`      POSTGRES_USER: ${user}`);
   lines.push('      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}');
   lines.push('    volumes:');
-  lines.push(request.dataDir ? `      - ${request.dataDir}/pg-data:/var/lib/postgresql/data` : '      - alfresco-db:/var/lib/postgresql/data');
+  lines.push(
+    request.dataDir && request.pgBind
+      ? `      - ${request.dataDir}/pg-data:/var/lib/postgresql/data`
+      : '      - alfresco-db:/var/lib/postgresql/data',
+  );
   lines.push('  activemq:');
   lines.push(`    image: ${ACTIVEMQ_IMAGE}`);
   lines.push('    environment:');
@@ -118,9 +128,9 @@ export function renderCompose(request: ComposeRequest): string {
     lines.push('    ports:');
     lines.push('      - "8081:8080"');
   }
+  lines.push('volumes:');
+  lines.push('  alfresco-db:');
   if (!request.dataDir) {
-    lines.push('volumes:');
-    lines.push('  alfresco-db:');
     lines.push('  alfresco-content:');
   }
   return lines.join('\n') + '\n';
@@ -186,8 +196,44 @@ export async function validateCompose(host: HostRef, content: string): Promise<s
 }
 
 /** Crea (en el DESTINO) las carpetas de datos de la version antes de montarlas. */
-export async function ensureDataDirs(host: HostRef, dataDir: string): Promise<void> {
-  await runShell(host, `mkdir -p "${dataDir}/alf-data" "${dataDir}/pg-data"`);
+export async function ensureDataDirs(host: HostRef, dataDir: string, pgBind = false): Promise<void> {
+  const dirs = pgBind ? `"${dataDir}/alf-data" "${dataDir}/pg-data"` : `"${dataDir}/alf-data"`;
+  await runShell(host, `mkdir -p ${dirs}`);
+}
+
+/**
+ * Secretos del stack del hop (`.migrator/provision/stack.env`), generados una vez y reutilizados: el
+ * compose los referencia como `${POSTGRES_PASSWORD}` / `${ACTIVEMQ_ADMIN_*}` y sin ellos Postgres no
+ * arranca. NO se exponen en la salida de la tool (no viajan al LLM).
+ */
+export async function ensureStackSecrets(workDir: string): Promise<Record<string, string>> {
+  const file = path.join(workDir, 'stack.env');
+  let text = '';
+  try {
+    text = await readFile(file, 'utf8');
+  } catch {
+    text = '';
+  }
+  const current: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const index = line.indexOf('=');
+    if (index > 0) current[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+  }
+  const secrets: Record<string, string> = {
+    POSTGRES_PASSWORD: current.POSTGRES_PASSWORD || randomBytes(12).toString('hex'),
+    ACTIVEMQ_ADMIN_LOGIN: current.ACTIVEMQ_ADMIN_LOGIN || 'admin',
+    ACTIVEMQ_ADMIN_PASSWORD: current.ACTIVEMQ_ADMIN_PASSWORD || randomBytes(12).toString('hex'),
+  };
+  await mkdir(workDir, { recursive: true });
+  await writeFile(file, Object.entries(secrets).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', 'utf8');
+  return secrets;
+}
+
+/** Prefijo de entorno con los secretos y un DOCKER_CONFIG limpio (evita el keychain de macOS por SSH). */
+function composeEnvPrefix(secrets: Record<string, string>): string {
+  const env = Object.entries(secrets).map(([key, value]) => `${key}='${value}'`).join(' ');
+  const dockerConfig = 'DOCKER_CONFIG=$(d=$(mktemp -d) && printf "{}" > "$d/config.json" && echo "$d")';
+  return `${dockerConfig} ${env}`;
 }
 
 /**
@@ -198,11 +244,16 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
   const content = renderCompose(request);
   const b64 = Buffer.from(content, 'utf8').toString('base64');
   const file = `/tmp/docker-compose-${slug(request.acsVersion)}.yml`;
+  const envFile = `/tmp/${slug(request.projectName)}.env`;
   const commands: string[] = [];
-  if (dstDir) commands.push(`sudo mkdir -p "${dstDir}/alf-data" "${dstDir}/pg-data"`);
+  // Los secretos NO se incluyen: se copian del stack.env local (no viajan al LLM).
+  commands.push(`scp .migrator/provision/stack.env <usuario>@<host>:${envFile}`);
+  if (dstDir) commands.push(`sudo mkdir -p "${dstDir}/alf-data"${request.pgBind ? ` "${dstDir}/pg-data"` : ''}`);
   commands.push(`printf '%s' '${b64}' | base64 -d | sudo tee ${file} >/dev/null`);
   commands.push(`sudo docker compose -p "${request.projectName}" down --remove-orphans`);
-  commands.push(`sudo docker compose -p "${request.projectName}" -f ${file} up -d --remove-orphans`);
+  commands.push(
+    `sudo DOCKER_CONFIG=$(d=$(mktemp -d) && printf '{}' > "$d/config.json" && echo "$d") docker compose --env-file ${envFile} -p "${request.projectName}" -f ${file} up -d --remove-orphans`,
+  );
   return commands;
 }
 
@@ -213,9 +264,11 @@ export async function provisionCompose(
   host: HostRef,
 ): Promise<{ file: string; started: boolean; detail: string }> {
   const file = await writeCompose(request, workDir);
+  const secrets = await ensureStackSecrets(workDir);
   // El compose se envia por STDIN (`-f -`): asi funciona igual en local y en el DESTINO remoto, donde la
-  // ruta local no existe.
-  const result = await runShellWithInput(host, 'docker compose -f - up -d --remove-orphans', renderCompose(request));
+  // ruta local no existe. Los secretos van como entorno del comando (no se exponen en la salida).
+  const command = `${composeEnvPrefix(secrets)} docker compose -p "${request.projectName}" -f - up -d --remove-orphans`;
+  const result = await runShellWithInput(host, command, renderCompose(request));
   if (result.exitCode !== 0) {
     throw new Error(`docker compose up fallido (exit=${result.exitCode}): ${result.stderr}`);
   }
@@ -228,6 +281,7 @@ export function projectToComposeRequest(
   withShare = false,
   memory?: AlfrescoMemory,
   dataDir?: string,
+  pgBind = false,
 ): ComposeRequest {
   return {
     projectName: project.project,
@@ -239,5 +293,6 @@ export function projectToComposeRequest(
     withShare,
     memory,
     dataDir,
+    pgBind,
   };
 }

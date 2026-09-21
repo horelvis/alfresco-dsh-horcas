@@ -13,6 +13,7 @@ import {
   projectToComposeRequest,
   provisionCompose,
   ensureDataDirs,
+  ensureStackSecrets,
   manualCommands,
   shouldSkipProvision,
   stopRunningStacks,
@@ -105,6 +106,7 @@ export function registerProvisionTools(ctx: Context): void {
         const execute = args.execute === true && mode !== 'manual';
         if (execute) requireDistinctTarget(project);
         const dstDir = args.dstDir ?? process.env.MIGRATOR_DST_DIR;
+        const pgBind = ['true', '1', 'yes', 'on'].includes((process.env.MIGRATOR_DST_PG_BIND ?? '').toLowerCase());
         if (execute && !dstDir) {
           throw new Error(
             'Falta la carpeta del DESTINO (EN EL HOST DESTINO, por SSH): pasa dstDir o define MIGRATOR_DST_DIR. ' +
@@ -121,7 +123,7 @@ export function registerProvisionTools(ctx: Context): void {
         const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
         const requests = hops.map((hop) => ({
           hop,
-          request: projectToComposeRequest(project, hop.to, args.withShare === true, memory, dstDir),
+          request: projectToComposeRequest(project, hop.to, args.withShare === true, memory, dstDir, pgBind),
         }));
         // SIEMPRE: comandos manuales listos para copiar y ejecutar en el DESTINO (sin SSH o con sudo).
         const manual = requests.map(({ hop, request }) => ({ hop: hop.to, commands: manualCommands(request, dstDir) }));
@@ -129,6 +131,7 @@ export function registerProvisionTools(ctx: Context): void {
         if (mode === 'manual') {
           const files: string[] = [];
           for (const { request } of requests) files.push(await writeCompose(request, workDir));
+          await ensureStackSecrets(workDir); // deja .migrator/provision/stack.env para copiarlo al destino
           return json({ mode, skipped: false, hops: files.length, files, stopped: [], manual, executed: false });
         }
 
@@ -140,7 +143,7 @@ export function registerProvisionTools(ctx: Context): void {
             if (invalid) throw new Error(`Compose invalido para el hop ${hop.to}: ${invalid}`);
           }
           // Ya validado: crea las carpetas de datos en el DESTINO y para los stacks que no tocan (liberar 8080).
-          if (dstDir) await ensureDataDirs(host, dstDir);
+          if (dstDir) await ensureDataDirs(host, dstDir, pgBind);
         }
         const stopped = execute ? await stopRunningStacks(host) : [];
         try {
