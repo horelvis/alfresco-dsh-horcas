@@ -50,10 +50,10 @@ gates:
     text: "Java 21/Tomcat 10+"
   - when: { atLeast: "26" }
     text: "ActiveMQ 6.x con autenticacion, eventos v2"
-  - when: { atLeast: "26", edition: "EE" }
-    text: "Solr no soportado (Enterprise)"
+  - when: { atLeast: "26" }
+    text: "Solr eliminado en 26.x (CE y EE): usar Search Enterprise (Elasticsearch/OpenSearch)"
 gatesFallback: "revisar breaking changes de $TO"
 
 # Requiere desmantelar Solr en el destino.
 solrRemoval:
-  when: { atLeast: "26", edition: "EE" }
+  when: { atLeast: "26" }

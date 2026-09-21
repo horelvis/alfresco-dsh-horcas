@@ -21,19 +21,21 @@ describe('resolveUpgradePath', () => {
 });
 
 describe('breakingChangeGates', () => {
-  it('26.2 EE incluye Solr-off y Java 21', () => {
+  it('26.2 incluye Solr-off (CE y EE) y Java 21', () => {
     const gates = breakingChangeGates('26.2', 'EE');
     expect(gates.join(' ')).toContain('Java 21');
-    expect(gates.join(' ')).toContain('Solr no soportado');
+    expect(gates.join(' ')).toContain('Solr eliminado en 26.x');
+    expect(breakingChangeGates('26.2', 'CE').join(' ')).toContain('Solr eliminado en 26.x');
   });
 
   it('23.4 solo pide revisar breaking changes', () => {
     expect(breakingChangeGates('23.4', 'CE')).toEqual(['revisar breaking changes de 23.4']);
   });
 
-  it('requiresSolrRemoval solo en EE >= 26', () => {
+  it('requiresSolrRemoval en 26.x (CE y EE); no antes', () => {
     expect(requiresSolrRemoval('26.2', 'EE')).toBe(true);
-    expect(requiresSolrRemoval('26.2', 'CE')).toBe(false);
+    expect(requiresSolrRemoval('26.2', 'CE')).toBe(true);
+    expect(requiresSolrRemoval('25.3', 'EE')).toBe(false);
     expect(requiresSolrRemoval('23.4', 'EE')).toBe(false);
   });
 });
