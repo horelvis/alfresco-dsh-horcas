@@ -41,11 +41,11 @@ if [ ! -f "$ROOT/dist/index.js" ]; then
 fi
 
 # 3) Credenciales/endpoint del LLM: dsh usa DEEPSEEK_*; reutilizamos la config del .env.
-#    OJO: el modelo del AGENTE lo fija el arnes (`agent-default-model` = deepseek-official/deepseek-flash);
-#    DEEPSEEK_DEFAULT_MODEL solo lo usa el plugin de busqueda web.
+#    OJO: el modelo del AGENTE lo fija el arnes (`agent-default-model` = deepseek-official/deepseek-v4.1-flash,
+#    override en ~/.dsh/profiles/<perfil>/cordis.patch.yml); DEEPSEEK_DEFAULT_MODEL solo lo usa la busqueda web.
 export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-${OPENAI_API_KEY:-}}"
 export DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-${OPENAI_BASE_URL:-}}"
-export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-flash}}"
+export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-v4.1-flash}}"
 
 # Personalizacion de la UI web (titulo de la pestana).
 export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"

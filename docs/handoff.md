@@ -16,11 +16,13 @@ agente del plugin sobre el arnés fork.
 - Backup existente: `.migrator/backup/` (dump BD + `contentstore/` ~1,9 GB + manifiesto SHA-256).
 
 ## Modelo LLM (efectivo)
-- **Proveedor/modelo**: `deepseek-official` / **`deepseek-flash`** (nombre de catálogo **DeepSeek-V41-Flash**).
+- **Proveedor/modelo**: `deepseek-official` / **`deepseek-v4.1-flash`** (id REAL de opencode Go).
 - **Endpoint**: `https://opencode.ai/zen/go/v1` (opencode Go; `DEEPSEEK_BASE_URL`). `DEEPSEEK_API_KEY` desde `.env`.
-- Lo fija el bundle base (`agent-default-model`), NO `OPENAI_CHAT_OPTIONS_MODEL` del `.env` ni `DEEPSEEK_DEFAULT_MODEL`
-  (ese solo lo usa el plugin de búsqueda web). Si se quiere modelo local: sección `llm-pi-ai` en `~/.dsh/settings.yaml`
-  (`api: openai`, `baseURL` local) + override de `agent-default-model`.
+- Se fija con un override de `agent-default-model` en `~/.dsh/profiles/<perfil>/cordis.patch.yml`. NO lo fijan
+  `OPENAI_CHAT_OPTIONS_MODEL` del `.env` ni `DEEPSEEK_DEFAULT_MODEL` (ese solo lo usa la búsqueda web).
+- El gateway exige cabecera de sesión (`MissingSessionID`); el adapter `messages` del arnés ya envía
+  `x-deepseek-harness-session-id`, así que funciona con la API key (no requiere suscripción).
+- Para modelo local: sección `llm-pi-ai` en `~/.dsh/settings.yaml` (`api: openai`, `baseURL` local) + override.
 
 ## Cómo lanzar
 ```
