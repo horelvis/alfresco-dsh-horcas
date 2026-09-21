@@ -8,12 +8,15 @@ El harness **no** sustituye tu despliegue real (`alfresco-dst`): verifica la ver
 hops, leída por REST), ejecuta/valida los pasos y registra el progreso. La provisión del stack es del
 operador (o de un modo `provision` que parchee tu `compose.yaml`).
 
+**Se restaura siempre desde un backup; el ORIGEN no se toca** (origen inmutable). Todo el trabajo ocurre
+sobre copias en el DESTINO.
+
 > Este documento es un **borrador de trabajo**: se ajustará durante el ensayo.
 
 ## Ciclo por hop
 
 1. **Crear el directorio de la versión** destino (`<base>/<versión>/`) y **copiar ahí** el content store y
-   la BBDD (partiendo del backup del origen, no del origen en vivo).
+   la BBDD **partiendo del backup** (el **ORIGEN no se toca**: origen inmutable).
 2. **Proveer la versión del salto**: imagen ACS del hop (`alfresco-content-repository-community:<versión>`)
    en el despliegue real, manteniendo el bind del content store y el volumen de la BBDD.
 3. **Levantar y comprobar** que arranca OK (smoke test: readiness + log sin errores de esquema).
@@ -35,9 +38,10 @@ El salto de **versión mayor** de PostgreSQL (p. ej. 7.4 ≈ PG 13/14/15 → 26.
 | **Migrador de datos** | Quieres reescribir esquema/datos a la vez | `pgloader` (cross-versión y desde otras BD). |
 | **Globals** | Roles/tablespaces/permisos | `pg_dumpall --globals-only` + `psql` en el destino. |
 
-Recomendación para este ensayo: como la BBDD viene de un **dump lógico** (`MIGRATOR_DB_DUMP_CMD` →
-`db.dump`), la vía es **`pg_restore`** en la versión del hop; no necesitas `pg_upgrade` salvo que quieras
-conservar el volumen físico entre mayores.
+En este proyecto la BBDD se migra **siempre desde backup** y **el ORIGEN nunca se toca** (origen
+inmutable): la vía por defecto es **restore lógico** (`pg_restore`) de `db.dump` en la versión del hop, que
+es cross-versión. **`pg_upgrade`/`pgautoupgrade` no hacen falta** salvo que quieras conservar el *volumen
+físico del destino* entre mayores (nunca el data directory del origen).
 
 ## Mapeo con las tools del harness
 
