@@ -168,8 +168,26 @@ export function migrationPlaybookSkill(): SkillContent {
   return {
     name: 'alfresco-migration-playbook',
     description:
-      'Flujo operativo de una migracion ACS a 26.x: assessment, ensayo en clone/TEST, drift a PROD, backup no destructivo, pasos de ejecucion (preflight, dump, copia, restore, schema-upgrade, reindex, verify), coherencia y forense de colangantes, gates GO/NO-GO. Cargar al ejecutar o supervisar una migracion.',
+      'Flujo operativo de una migracion ACS a 26.x: assessment, ensayo en clone/TEST, drift a PROD, backup no destructivo, pasos de ejecucion (preflight, dump, copia, restore, schema-upgrade, reindex, verify), coherencia y forense de colgantes, gates GO/NO-GO. Cargar al ejecutar o supervisar una migracion. Disparadores: "iniciar migracion", "continuar migracion" (basta con eso).',
     content: `# Playbook de migracion ACS -> 26.x
+
+## Entradas minimas (usuario sin experiencia)
+Basta con una de estas frases; NO pidas un prompt detallado.
+
+- **"iniciar migracion"** (o "empezar"): carga esta skill y ejecuta el runbook:
+  1. resuelve el **proyecto del workspace** y su estado (\`.migrator\`); si no hay proyecto, \`migrator_wizard\`;
+  2. verificaciones **READ-ONLY** (\`migrator_verify_target\`, \`migrator_mount_check\`, \`migrator_coherence\`,
+     \`migrator_schema_check\`, \`migrator_estimate\`);
+  3. determina **el hop que toca** y si el DESTINO esta en su version (guarda de hops);
+  4. **dry-run** de los pasos del hop (\`migrator_run_steps\`, \`execute=false\`);
+  5. presenta **plan + evidencia** y pide **aprobacion**;
+  6. con aprobacion, ejecuta (\`execute=true\`) y verifica (\`verify-target\`);
+  7. registra el intento (\`migrator_rehearsal_record\`).
+  Si el DESTINO **no** esta en la version del hop, **no escribas**: indica que hay que provisionar esa version y para.
+- **"continuar migracion"** (o "sigue"/"retoma"): lee el estado (\`.migrator/hops.jsonl\`, \`checkpoints.jsonl\`,
+  experiencia), situa el punto de reanudacion (\`resumeFrom\`) y continua desde ahi con el mismo runbook.
+
+Pide por \`ask_user_question\` **solo** lo imprescindible que no puedas resolver del workspace/estado.
 
 ## Ante una peticion amplia (p.ej. "iniciar evaluacion de migracion de version alfresco")
 No esperes un prompt perfecto ni inventes datos. Empieza por el **assessment** (fuente de verdad), propone

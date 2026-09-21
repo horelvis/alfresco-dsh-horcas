@@ -8,4 +8,10 @@ describe('conducta operativa (system prompt)', () => {
     expect(text).toMatch(/unico resumen final/i);
     expect(text).toMatch(/ask_user_question/);
   });
+
+  it('mapea entradas minimas ("iniciar/continuar migracion") al playbook', () => {
+    const text = conductSectionText();
+    expect(text).toMatch(/iniciar migracion/i);
+    expect(text).toContain('alfresco-migration-playbook');
+  });
 });

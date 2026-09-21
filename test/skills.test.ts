@@ -24,6 +24,14 @@ describe('skills de conocimiento', () => {
     expect(skill.content).toContain('REPLICA IDENTITY');
   });
 
+  it('playbook: entradas minimas "iniciar/continuar migracion" con runbook', () => {
+    const skill = migrationPlaybookSkill();
+    expect(skill.description).toMatch(/iniciar migracion/i);
+    expect(skill.content).toContain('Entradas minimas');
+    expect(skill.content).toMatch(/continuar migracion/i);
+    expect(skill.content).toContain('ask_user_question');
+  });
+
   it('recomendaciones: carga el catalogo oficial desde data', async () => {
     const skill = await loadRecommendationSkill();
     expect(skill.name).toBe('alfresco-migration-recommendations');

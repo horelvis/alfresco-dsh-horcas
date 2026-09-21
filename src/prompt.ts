@@ -15,7 +15,9 @@ export function conductSectionText(): string {
     'no escribas texto. Ejecuta (o propone) el trabajo con las tools del migrador y, al terminar, entrega ' +
     'UN unico resumen final con la evidencia de las tools. Usa la via de preguntas del arnes ' +
     '(ask_user_question) solo si falta un dato imprescindible; no pidas confirmacion de lo ya aprobado. ' +
-    'Evita relleno, disculpas y repeticiones.'
+    'Evita relleno, disculpas y repeticiones. ' +
+    'Entradas minimas: si el usuario dice solo "iniciar migracion" o "continuar migracion" (o equivalente), ' +
+    'carga la skill `alfresco-migration-playbook` y sigue su runbook; no le pidas un prompt detallado.'
   );
 }
 
