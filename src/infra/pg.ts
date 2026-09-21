@@ -3,6 +3,7 @@
  * El origen es inmutable por diseño: las tools de migracion solo SELECT sobre el.
  */
 import pg from 'pg';
+import { describeError } from './errors.js';
 
 const { Client } = pg;
 
@@ -69,8 +70,13 @@ export async function connectSource(config: SourceDbConfig): Promise<pg.Client> 
     user: config.user,
     password: config.password,
   });
-  await client.connect();
-  return client;
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    throw new Error(`No se pudo conectar a PostgreSQL ${config.host}:${config.port}/${config.name}: ${describeError(error)}`);
+  }
 }
 
 export async function queryRows(

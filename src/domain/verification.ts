@@ -10,6 +10,7 @@
 import type { HostRef } from '../infra/exec.js';
 import { runShell } from '../infra/exec.js';
 import { connectSource, queryRows, sourceDbConfigFromEnv, targetDbConfigFromEnv, type SourceDbConfig } from '../infra/pg.js';
+import { describeError } from '../infra/errors.js';
 import { scanStore } from './assessment.js';
 import type { ProjectConfig } from './project-config.js';
 
@@ -82,7 +83,12 @@ export async function verifyParity(
   tolerancePct = 0,
 ): Promise<VerificationReport> {
   const notes: string[] = [];
-  const [sourceCounts, targetCounts] = await Promise.all([probes.sourceCounts(), probes.targetCounts()]);
+  // allSettled: una BD inaccesible no debe tumbar la verificacion entera (ni lanzar un AggregateError vacio).
+  const [sourceResult, targetResult] = await Promise.allSettled([probes.sourceCounts(), probes.targetCounts()]);
+  const sourceCounts = sourceResult.status === 'fulfilled' ? sourceResult.value : {};
+  const targetCounts = targetResult.status === 'fulfilled' ? targetResult.value : {};
+  if (sourceResult.status === 'rejected') notes.push(`conteos del ORIGEN no disponibles: ${describeError(sourceResult.reason)}`);
+  if (targetResult.status === 'rejected') notes.push(`conteos del DESTINO no disponibles: ${describeError(targetResult.reason)}`);
   const labels = [...new Set([...Object.keys(sourceCounts), ...Object.keys(targetCounts)])].sort();
   const counts = labels.map((label) => countCheck(label, sourceCounts[label] ?? 0, targetCounts[label] ?? 0, tolerancePct));
 
@@ -98,7 +104,7 @@ export async function verifyParity(
       notes.push('content store no verificable (ruta no accesible en origen o destino)');
     }
   } catch (error) {
-    notes.push(`content store no verificable: ${String(error)}`);
+    notes.push(`content store no verificable: ${describeError(error)}`);
   }
 
   return { project: project.project, counts, store, verdict: verdictOf(counts, store, notes), notes };

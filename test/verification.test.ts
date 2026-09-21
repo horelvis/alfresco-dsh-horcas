@@ -58,4 +58,13 @@ describe('verificacion de paridad origen->destino', () => {
     expect(report.verdict).toBe('WARN');
     expect(report.notes.length).toBeGreaterThan(0);
   });
+
+  it('verifyParity: una BD inaccesible no lanza (nota con detalle) y da WARN', async () => {
+    const down = async (): Promise<Record<string, number>> => {
+      throw new AggregateError([Object.assign(new Error(''), { code: 'ECONNREFUSED' })], '');
+    };
+    const report = await verifyParity(project, probes({ sourceCounts: down, targetCounts: down }));
+    expect(report.verdict).toBe('WARN');
+    expect(report.notes.join(' ')).toContain('ECONNREFUSED');
+  });
 });
