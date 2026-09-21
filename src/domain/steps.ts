@@ -15,6 +15,7 @@ import type { ProjectConfig } from '../domain/project-config.js';
 import { planContentCopy } from './content-copy.js';
 import { resolveContentStorePath } from './content-store.js';
 import { discoverRest } from './assessment.js';
+import { sameMinor } from './hops.js';
 import { describeError } from '../infra/errors.js';
 
 export interface StepContext {
@@ -264,12 +265,27 @@ const schemaUpgrade: StepDefinition = {
 /** `reindex`: regenera el indice de busqueda en el destino (Reindexing app / Solr tracking). */
 const reindex: StepDefinition = {
   id: 'reindex',
-  description: 'Regenera el indice de busqueda del destino (nunca se migra).',
+  description: 'Regenera el indice de busqueda del DESTINO. SOLO en la version FINAL (nunca por hop).',
   writes: true,
   async run(ctx, params) {
     const override = process.env.MIGRATOR_REINDEX_CMD;
     if (ctx.dryRun) {
       return skipped('reindex', 'dry-run');
+    }
+    // NUNCA reindexar en hops intermedios: solo cuando el DESTINO ya esta en la version FINAL del proyecto.
+    const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
+    const detected = baseUrl
+      ? await discoverRest(
+          baseUrl,
+          process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER,
+          process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD,
+        )
+      : undefined;
+    if (detected && !sameMinor(detected.version, ctx.project.target.version)) {
+      return skipped(
+        'reindex',
+        `reindex SOLO en la version final (${ctx.project.target.version}); el DESTINO esta en ${detected.version}: se omite en hops intermedios`,
+      );
     }
     if (!override) {
       return skipped('reindex', 'sin MIGRATOR_REINDEX_CMD');

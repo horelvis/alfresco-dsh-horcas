@@ -206,6 +206,10 @@ Basta con una de estas frases; NO pidas un prompt detallado.
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.
 
+**El reindex NO se hace por hop.** Solo se regenera el indice cuando el DESTINO ya esta en la version
+**FINAL** del proyecto (26.2); en hops intermedios (7.4, 25.3) se OMITE siempre (el plugin lo impone). No
+preguntes por reindex en un hop intermedio.
+
 **No crees directorios ni ficheros de trabajo con \`bash\`** (el sandbox es read-only): el migrador crea su
 directorio de run (\`.migrator/<runId>/\`) y sus artefactos con sus propias tools.
 

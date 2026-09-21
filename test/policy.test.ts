@@ -93,7 +93,7 @@ describe('politica de seguridad', () => {
     );
     const runDetails = run.details.join(' | ');
     expect(runDetails).toContain('copy-content — Copia el content store del origen al destino');
-    expect(runDetails).toContain('reindex — Regenera el indice de busqueda del destino');
+    expect(runDetails).toContain('reindex — Regenera el indice de busqueda del DESTINOueda del destino');
     expect(runDetails).toContain('dry-run');
 
     const decision = decide(
