@@ -16,13 +16,23 @@ agente del plugin sobre el arnés fork.
 - Backup existente: `.migrator/backup/` (dump BD + `contentstore/` ~1,9 GB + manifiesto SHA-256).
 
 ## Modelo LLM (efectivo)
-- **Proveedor/modelo**: `deepseek-official` / **`deepseek-v4.1-flash`** (id REAL de opencode Go).
-- **Endpoint**: `https://opencode.ai/zen/go/v1` (opencode Go; `DEEPSEEK_BASE_URL`). `DEEPSEEK_API_KEY` desde `.env`.
-- Se fija con un override de `agent-default-model` en `~/.dsh/profiles/<perfil>/cordis.patch.yml`. NO lo fijan
-  `OPENAI_CHAT_OPTIONS_MODEL` del `.env` ni `DEEPSEEK_DEFAULT_MODEL` (ese solo lo usa la búsqueda web).
-- El gateway exige cabecera de sesión (`MissingSessionID`); el adapter `messages` del arnés ya envía
-  `x-deepseek-harness-session-id`, así que funciona con la API key (no requiere suscripción).
-- Para modelo local: sección `llm-pi-ai` en `~/.dsh/settings.yaml` (`api: openai`, `baseURL` local) + override.
+- **Proveedor/modelo**: `opencode-go` / **`deepseek-v4.1-flash`** (id REAL de opencode Go).
+- Se configura en la **config de modelos del arnés** (`~/.dsh/settings.yaml`), NO hardcodeado en el patch:
+  ```yaml
+  agent-default-model: { provider: opencode-go, model: deepseek-v4.1-flash }
+  llm-pi-ai:
+    providers:
+      opencode-go:
+        api: openai-completions
+        baseURL: https://opencode.ai/zen/go/v1
+        apiKeyEnv: OPENCODE_GO_API_KEY
+        reasoning: off
+        headers: { x-opencode-session: dsh-harness }
+        models: [{ id: deepseek-v4.1-flash, name: DeepSeek-V41-Flash }]
+  ```
+- El gateway exige cabecera de sesión (`x-opencode-session` en `/chat/completions`); por eso va en `headers`.
+- El lanzador exporta `OPENCODE_GO_API_KEY` desde `OPENAI_API_KEY`. `OPENAI_CHAT_OPTIONS_MODEL`/
+  `DEEPSEEK_DEFAULT_MODEL` solo alimentan la búsqueda web. Para modelo local: otro provider en `llm-pi-ai`.
 
 ## Cómo lanzar
 ```

@@ -46,6 +46,8 @@ fi
 export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-${OPENAI_API_KEY:-}}"
 export DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-${OPENAI_BASE_URL:-}}"
 export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-v4.1-flash}}"
+# Provider pi-ai 'opencode-go' (config de modelos del arnes): reutiliza la misma clave/endpoint.
+export OPENCODE_GO_API_KEY="${OPENCODE_GO_API_KEY:-${OPENAI_API_KEY:-}}"
 
 # Personalizacion de la UI web (titulo de la pestana).
 export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"
