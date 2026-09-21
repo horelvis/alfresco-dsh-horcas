@@ -34,9 +34,14 @@ describe('matriz de upgrade (data-driven)', () => {
     expect(() => requireSupportedUpgradePath('4.0', '26.2')).toThrow(/NO soportado/i);
   });
 
-  it('avisa de saltos intermedios y de REQUIRES_VALIDATION', () => {
+  it('7.1.0 -> 26.2 avisa de saltos en orden pero NO de REQUIRES_VALIDATION', () => {
     const warnings = upgradePathWarnings(requireSupportedUpgradePath('7.1.0', '26.2')).join(' ');
     expect(warnings).toMatch(/3 saltos EN ORDEN/);
+    expect(warnings).not.toMatch(/REQUIRES_VALIDATION/);
+  });
+
+  it('un origen legacy (6.x) si exige validacion del fabricante', () => {
+    const warnings = upgradePathWarnings(requireSupportedUpgradePath('6.2', '26.2')).join(' ');
     expect(warnings).toMatch(/REQUIRES_VALIDATION/);
   });
 

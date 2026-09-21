@@ -53,7 +53,8 @@ global). El guardrail ya permite esas tools. Pendiente: `journal` + `migrator_re
    (bloquea el salto directo). → **Desplegar el destino en 7.4** antes del primer hop.
 2. Decidir: (a) almacenamiento/datastore, (b) estrategia **C2/D2** vs **C5/D1**, (c) `MIGRATOR_DB_RESTORE_CMD`
    por `docker exec` (Postgres del destino no publicado).
-3. Gate **7.1.0 → 7.4 = REQUIRES_VALIDATION**: abrir caso con Hyland (bloqueante para PROD, no para el ensayo).
+3. **7.1.0 → 7.4 es SOPORTADO** (no requiere validacion del fabricante): lo que bloquea es **saltarse 7.4**
+   (la cadena de hops lo impone). El caso con Hyland solo aplicaria a orígenes 6.x o anteriores.
 4. Coherencia: `exp.conf.zip` colgante (binario ausente = **pérdida real**) → restaurar desde backup sobre
    copia y repetir FULL hasta que deje de ser FAIL.
 

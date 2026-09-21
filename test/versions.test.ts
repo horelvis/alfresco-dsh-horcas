@@ -3,11 +3,10 @@ import { compareVersions } from '../src/domain/versions.js';
 import { breakingChangeGates, requiresSolrRemoval, resolveUpgradePath } from '../src/domain/upgrade-paths.js';
 
 describe('resolveUpgradePath', () => {
-  it('7.1.0 -> 26.2 encadena 3 hops con el primero REQUIRES_VALIDATION', () => {
+  it('7.1.0 -> 26.2 encadena 3 hops SOPORTADOS (no se puede saltar 7.4)', () => {
     const hops = resolveUpgradePath('7.1.0', '26.2');
     expect(hops.map((h) => `${h.from}->${h.to}`)).toEqual(['7.1.0->7.4', '7.4->25.3', '25.3->26.2']);
-    expect(hops[0]?.pathClass).toBe('REQUIRES_VALIDATION');
-    expect(hops[2]?.pathClass).toBe('SUPPORTED');
+    expect(hops.every((h) => h.pathClass === 'SUPPORTED')).toBe(true);
   });
 
   it('25.3.0 -> 26.2 es un unico hop soportado', () => {

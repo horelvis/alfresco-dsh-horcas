@@ -15,6 +15,6 @@ export function helpText(): string {
     'Recuerda:',
     '- **Nada se escribe sin tu aprobacion** (sandbox `read-only` + confirmacion en dos pasos).',
     '- El **ORIGEN nunca se toca**: se trabaja desde el backup.',
-    '- Ruta obligatoria por hops: **7.1.0 → 7.4 → 25.3 → 26.2** (el primer hop exige validacion del fabricante).',
+    '- Ruta obligatoria por hops: **7.1.0 → 7.4 → 25.3 → 26.2** (no se puede saltar ninguna version de la ruta).',
   ].join('\n');
 }

@@ -56,7 +56,7 @@ export function upgradeGatesSkill(): SkillContent {
     name: 'alfresco-upgrade-gates',
     description:
       'Matriz de gates de breaking changes por version/edicion destino (Java 21/Tomcat 11, ActiveMQ 6.x con autenticacion, eventos v2, Solr-off en Enterprise desde 26) y rutas de upgrade soportadas. Cargar al planificar un salto de version.',
-    content: `# Gates de breaking changes y rutas de upgrade\n\n${lines.join('\n')}\n\nRutas soportadas: 7.x < 7.2 requiere validacion del fabricante; 7.4 -> 25.3 -> 26.2. Subir Search Services (Solr) antes que el repositorio.
+    content: `# Gates de breaking changes y rutas de upgrade\n\n${lines.join('\n')}\n\nRutas soportadas: 7.1.0 -> 7.4 -> 25.3 -> 26.2 (NO se puede saltar 7.4). Un origen 6.x o anterior si exige validacion del fabricante. Subir Search Services (Solr) antes que el repositorio.
 Regla: NO se salta de version; la migracion se hace por la cadena de hops EN ORDEN (p.ej. 7.1 -> 7.4 -> 25.3 -> 26.2). Los saltos \`UNSUPPORTED\` se rechazan.\n`,
   };
 }

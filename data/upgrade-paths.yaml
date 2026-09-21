@@ -10,7 +10,7 @@ notes:
   activemq: "ActiveMQ con autenticacion"
   eventsV1: "eventos v1 deshabilitados"
   solrOff: "Solr no soportado: regenerar con Search Enterprise"
-  validateWithVendor: "Upgrade < 7.2 / salto legacy: contactar con soporte del fabricante"
+  validateWithVendor: "Origen legacy (6.x o anterior): contactar con soporte del fabricante"
   noMultiTenancy: "Sin multi-tenancy desde 6.x"
   unsupported: "Ruta no soportada: validar con el fabricante"
 
@@ -32,10 +32,8 @@ rules:
   - id: from-7.x
     when: { fromMajor: 7 }
     hops:
-      - from: "$FROM"
-        to: "7.4"
-        class: SUPPORTED
-        classBelow: { version: "7.2", class: REQUIRES_VALIDATION, notes: [validateWithVendor] }
+      # 7.1.0 -> 7.4 es un hop SOPORTADO: lo que NO se puede es SALTAR 7.4 (lo impone la cadena de hops).
+      - { from: "$FROM", to: "7.4", class: SUPPORTED }
       - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21, activemq, eventsV1] }
       - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
 
