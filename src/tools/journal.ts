@@ -77,6 +77,7 @@ export function registerJournalTools(ctx: Context): void {
             resumeFrom?: string;
             backup?: { present: boolean };
             journal?: { kind: string; summary: string; at: string };
+            journalStale?: boolean;
             sessions?: string[];
             nextAction: string;
           };
@@ -89,6 +90,7 @@ export function registerJournalTools(ctx: Context): void {
             `run=${v.lastRunId ?? '-'} reanudar=${v.resumeFrom ?? '-'}`,
             `backup=${v.backup?.present ? 'presente' : 'ausente'}`,
             v.journal ? `journal[${v.journal.kind}]: ${v.journal.summary}` : 'journal=(vacio)',
+            v.journalStale ? 'AVISO: el journal contradice los HECHOS vivos (manda el estado actual); anota un hito nuevo.' : '',
             v.sessions && v.sessions.length ? `sesiones previas: ${v.sessions.join(', ')}` : '',
             `SIGUIENTE: ${v.nextAction}`,
           ].filter(Boolean);
@@ -140,6 +142,8 @@ export function registerJournalTools(ctx: Context): void {
         const alignment = checkHopAlignment(hops, done, detected?.version, project.target.version);
 
         const backupComplete = backup.db && backup.contentStore && backup.config;
+        // Si el journal dice "blocker" pero los HECHOS vivos cuadran, el hito es obsoleto: manda el estado actual.
+        const journalStale = journal?.kind === 'blocker' && alignment.ok && detected !== undefined;
         return json({
           hasProject: true,
           project: project.project,
@@ -156,6 +160,7 @@ export function registerJournalTools(ctx: Context): void {
           backup: { present: backup.present, complete: backupComplete, db: backup.db, contentStore: backup.contentStore, config: backup.config },
           provisionComposes: composes,
           journal: journal ? { kind: journal.kind, summary: journal.summary, at: journal.at } : undefined,
+          journalStale,
           journalEntries: (await loadJournal(state, project.project)).length,
           sessions: await recentSessions(cwd),
           nextAction: nextAction({

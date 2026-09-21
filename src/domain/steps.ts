@@ -12,6 +12,7 @@ import { runShell, substitute, type ExecResult } from '../infra/exec.js';
 import type { ProjectConfig } from '../domain/project-config.js';
 import { planContentCopy } from './content-copy.js';
 import { resolveContentStorePath } from './content-store.js';
+import { discoverRest } from './assessment.js';
 
 export interface StepContext {
   project: ProjectConfig;
@@ -62,8 +63,24 @@ const preflightTarget: StepDefinition = {
     if (ctx.destination.name === 'local') {
       return skipped('preflight-target', 'destino local');
     }
-    const result = await runShell(ctx.destination, 'docker version --format "{{.Server.Version}}" && docker compose version --short');
-    return requireResult('preflight-target', result);
+    const runtime = await runShell(ctx.destination, 'docker version --format "{{.Server.Version}}" && docker compose version --short');
+    if (runtime.exitCode !== 0) {
+      return fail('preflight-target', runtime.stderr.trim() || 'docker no disponible en el destino');
+    }
+    const [docker, compose] = runtime.stdout.trim().split('\n');
+    // La version de ACS se LEE del repositorio (discovery): Docker/compose NO son la version de ACS.
+    const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
+    const detected = baseUrl
+      ? await discoverRest(
+          baseUrl,
+          process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER,
+          process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD,
+        )
+      : undefined;
+    return ok(
+      'preflight-target',
+      `docker=${docker ?? '?'} compose=${compose ?? '?'} acs=${detected?.version ?? 'no detectado'} (docker NO es la version de ACS)`,
+    );
   },
 };
 
