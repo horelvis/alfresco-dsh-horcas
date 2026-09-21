@@ -1,5 +1,8 @@
 # Upgrade físico por hop (procedimiento operativo)
 
+**Alcance:** este migrador solo soporta ACS **7.x en adelante**. Las versiones previas (6.x y anteriores)
+usan otra arquitectura (p. ej. Tomcat antiguo) y quedan **fuera de alcance**.
+
 Ruta obligatoria: **7.1.0 → 7.4 → 25.3 → 26.2** (no se salta de versión). En cada hop el DESTINO se sube a
 la versión del salto, reutilizando **el mismo content store y la misma BBDD** (copiados a un *directorio de
 versión*), y se deja que ACS aplique el **auto-update de esquema** al arrancar.

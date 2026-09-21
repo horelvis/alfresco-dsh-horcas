@@ -40,9 +40,9 @@ describe('matriz de upgrade (data-driven)', () => {
     expect(warnings).not.toMatch(/REQUIRES_VALIDATION/);
   });
 
-  it('un origen legacy (6.x) si exige validacion del fabricante', () => {
-    const warnings = upgradePathWarnings(requireSupportedUpgradePath('6.2', '26.2')).join(' ');
-    expect(warnings).toMatch(/REQUIRES_VALIDATION/);
+  it('un origen < 7.x queda fuera de alcance (no soportado por este migrador)', () => {
+    expect(() => requireSupportedUpgradePath('6.2', '26.2')).toThrow(/NO soportado/i);
+    expect(() => requireSupportedUpgradePath('5.2', '26.2')).toThrow(/NO soportado/i);
   });
 
   it('una ruta directa soportada no avisa de saltos', () => {

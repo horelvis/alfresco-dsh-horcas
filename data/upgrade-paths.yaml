@@ -10,9 +10,7 @@ notes:
   activemq: "ActiveMQ con autenticacion"
   eventsV1: "eventos v1 deshabilitados"
   solrOff: "Solr no soportado: regenerar con Search Enterprise"
-  validateWithVendor: "Origen legacy (6.x o anterior): contactar con soporte del fabricante"
-  noMultiTenancy: "Sin multi-tenancy desde 6.x"
-  unsupported: "Ruta no soportada: validar con el fabricante"
+  unsupported: "No soportado por este migrador: requiere 7.x o superior (las versiones previas usan otra arquitectura, p. ej. Tomcat antiguo)"
 
 # Reglas en orden; la PRIMERA cuyo `when` casa define la ruta.
 # `when.fromAtLeast` / `fromMajor*` evaluan la version ORIGEN.
@@ -37,20 +35,8 @@ rules:
       - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21, activemq, eventsV1] }
       - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
 
-  - id: from-6.x
-    when: { fromMajor: 6 }
-    hops:
-      - { from: "$FROM", to: "7.4", class: REQUIRES_VALIDATION, notes: [validateWithVendor] }
-      - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21] }
-      - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
-
-  - id: from-5.x
-    when: { fromMajor: 5 }
-    hops:
-      - { from: "$FROM", to: "6.2", class: REQUIRES_VALIDATION, notes: [noMultiTenancy] }
-      - { from: "6.2", to: "7.4", class: REQUIRES_VALIDATION, notes: [validateWithVendor] }
-      - { from: "7.4", to: "25.3", class: SUPPORTED, notes: [java21] }
-      - { from: "25.3", to: "$TO", class: SUPPORTED, notes: [solrOff] }
+  # Este migrador solo soporta 7.x en adelante: las versiones previas tienen otra arquitectura
+  # (p. ej. Tomcat antiguo) y quedan FUERA DE ALCANCE (caen en la regla `unsupported`).
 
   - id: unsupported
     when: { always: true }
