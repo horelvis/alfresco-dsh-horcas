@@ -42,6 +42,14 @@ describe('compose', () => {
     expect(() => renderCompose({ ...request, search: { engine: 'solr' } })).toThrow();
   });
 
+  it('con dataDir monta el content store y la BD en la carpeta del DESTINO (bind, sin volumenes con nombre)', () => {
+    const yaml = renderCompose({ ...request, dataDir: '/data/alfresco-dst-v2' });
+    expect(yaml).toContain('/data/alfresco-dst-v2/alf-data:/usr/local/tomcat/alf_data');
+    expect(yaml).toContain('/data/alfresco-dst-v2/pg-data:/var/lib/postgresql/data');
+    expect(yaml).not.toContain('alfresco-content:');
+    expect(yaml).not.toContain('volumes:\n  alfresco-db:');
+  });
+
   it('auto-skip: external siempre, auto solo si corre, managed nunca', () => {
     expect(shouldSkipProvision('external', false)).toBe(true);
     expect(shouldSkipProvision('auto', true)).toBe(true);

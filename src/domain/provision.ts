@@ -9,7 +9,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { runShell, type ExecResult, type HostRef } from '../infra/exec.js';
+import { runShell, runShellWithInput, type ExecResult, type HostRef } from '../infra/exec.js';
 import { memLimitForCompose, type AlfrescoMemory } from './memory.js';
 import type { ProjectConfig } from './project-config.js';
 
@@ -23,6 +23,8 @@ export interface ComposeRequest {
   withShare?: boolean;
   /** Memoria calculada para el repositorio (si falta, se usa un minimo seguro). */
   memory?: AlfrescoMemory;
+  /** Carpeta base en el DESTINO para los datos de la version (content store + BD). Si falta, volumenes. */
+  dataDir?: string;
 }
 
 const POSTGRES_IMAGE = 'postgres:15';
@@ -73,7 +75,7 @@ export function renderCompose(request: ComposeRequest): string {
   lines.push(`      POSTGRES_USER: ${user}`);
   lines.push('      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}');
   lines.push('    volumes:');
-  lines.push('      - alfresco-db:/var/lib/postgresql/data');
+  lines.push(request.dataDir ? `      - ${request.dataDir}/pg-data:/var/lib/postgresql/data` : '      - alfresco-db:/var/lib/postgresql/data');
   lines.push('  activemq:');
   lines.push(`    image: ${ACTIVEMQ_IMAGE}`);
   lines.push('    environment:');
@@ -106,7 +108,7 @@ export function renderCompose(request: ComposeRequest): string {
   lines.push('    ports:');
   lines.push('      - "8080:8080"');
   lines.push('    volumes:');
-  lines.push('      - alfresco-content:/usr/local/tomcat/alf_data');
+  lines.push(request.dataDir ? `      - ${request.dataDir}/alf-data:/usr/local/tomcat/alf_data` : '      - alfresco-content:/usr/local/tomcat/alf_data');
   if (request.withShare) {
     lines.push('  share:');
     lines.push(`    image: alfresco/alfresco-share:${request.acsVersion}`);
@@ -116,9 +118,11 @@ export function renderCompose(request: ComposeRequest): string {
     lines.push('    ports:');
     lines.push('      - "8081:8080"');
   }
-  lines.push('volumes:');
-  lines.push('  alfresco-db:');
-  lines.push('  alfresco-content:');
+  if (!request.dataDir) {
+    lines.push('volumes:');
+    lines.push('  alfresco-db:');
+    lines.push('  alfresco-content:');
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -179,7 +183,9 @@ export async function provisionCompose(
   host: HostRef,
 ): Promise<{ file: string; started: boolean; detail: string }> {
   const file = await writeCompose(request, workDir);
-  const result = await runShell(host, `docker compose -f "${file}" up -d`);
+  // El compose se envia por STDIN (`-f -`): asi funciona igual en local y en el DESTINO remoto, donde la
+  // ruta local no existe.
+  const result = await runShellWithInput(host, 'docker compose -f - up -d --remove-orphans', renderCompose(request));
   if (result.exitCode !== 0) {
     throw new Error(`docker compose up fallido (exit=${result.exitCode}): ${result.stderr}`);
   }
@@ -191,6 +197,7 @@ export function projectToComposeRequest(
   acsVersion: string,
   withShare = false,
   memory?: AlfrescoMemory,
+  dataDir?: string,
 ): ComposeRequest {
   return {
     projectName: project.project,
@@ -201,5 +208,6 @@ export function projectToComposeRequest(
     search: project.target.search,
     withShare,
     memory,
+    dataDir,
   };
 }

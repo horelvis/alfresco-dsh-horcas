@@ -193,6 +193,10 @@ Basta con una de estas frases; NO pidas un prompt detallado.
   (hop actual, backup, destino, siguiente accion) SIN re-ejecutar comprobaciones.
 - **"ayuda"** o primer mensaje del chat: llama a \`migrator_help\` (frases de ejemplo) y espera.
 
+- **Antes de provisionar** (\`migrator_provision execute=true\`): pide al usuario la **carpeta del DESTINO**
+  (\`dstDir\`, p.ej. \`/Users/horelvis/git/alfresco-dst-v2\`) si no está en \`MIGRATOR_DST_DIR\`. Ahi se montan el
+  content store (\`<dstDir>/alf-data\`) y la BD (\`<dstDir>/pg-data\`) de la version.
+
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.
 

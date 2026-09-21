@@ -50,6 +50,11 @@ export function registerProvisionTools(ctx: Context): void {
       parameters: {
         execute: { type: 'boolean', description: 'false = solo generar los compose (por defecto)' },
         withShare: { type: 'boolean', description: 'incluir Share en el compose' },
+        dstDir: {
+          type: 'string',
+          description:
+            'Carpeta base en el DESTINO para los datos de la version (content store en <dstDir>/alf-data y BD en <dstDir>/pg-data). Si falta, se usa MIGRATOR_DST_DIR.',
+        },
       },
       output: {
         schema: {
@@ -78,6 +83,13 @@ export function registerProvisionTools(ctx: Context): void {
         const host = destinationHost(project);
         const execute = args.execute === true;
         if (execute) requireDistinctTarget(project);
+        const dstDir = args.dstDir ?? process.env.MIGRATOR_DST_DIR;
+        if (execute && !dstDir) {
+          throw new Error(
+            'Falta la carpeta del DESTINO: pasa dstDir (p.ej. /Users/horelvis/git/alfresco-dst-v2) o define ' +
+              'MIGRATOR_DST_DIR. El content store y la BD de la version se montan ahi (<dstDir>/alf-data y <dstDir>/pg-data).',
+          );
+        }
         const running = execute && (await destinationRunning(host));
         if (execute && shouldSkipProvision(mode, running)) {
           return json({ mode, skipped: true, hops: 0, files: [], executed: false });
@@ -90,7 +102,7 @@ export function registerProvisionTools(ctx: Context): void {
         const memTotal = await dockerMemTotal(host);
         const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
         for (const hop of hops) {
-          const request = projectToComposeRequest(project, hop.to, args.withShare === true, memory);
+          const request = projectToComposeRequest(project, hop.to, args.withShare === true, memory, dstDir);
           if (execute) {
             const result = await provisionCompose(request, workDir, host);
             files.push(result.file);

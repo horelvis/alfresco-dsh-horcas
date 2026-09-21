@@ -28,28 +28,42 @@ export function substitute(template: string, values: Record<string, string>): st
   return result;
 }
 
-function runLocal(command: string, args: string[]): Promise<ExecResult> {
+function runLocal(command: string, args: string[], stdin?: string): Promise<ExecResult> {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (chunk) => (stdout += chunk));
-    child.stderr.on('data', (chunk) => (stderr += chunk));
+    child.stdout?.on('data', (chunk) => (stdout += chunk));
+    child.stderr?.on('data', (chunk) => (stderr += chunk));
     child.on('error', (error) => resolve({ command: [command, ...args].join(' '), exitCode: 127, stdout, stderr: String(error) }));
     child.on('close', (code) => resolve({ command: [command, ...args].join(' '), exitCode: code ?? -1, stdout, stderr }));
+    child.stdin?.end(stdin ?? '');
   });
 }
 
-/** Ejecuta un comando shell en el host (local o por SSH). */
-export async function runShell(host: HostRef, command: string, signal?: AbortSignal): Promise<ExecResult> {
+/** Comando + argumentos para ejecutar en el host (local via `sh -c`, remoto via `ssh`). */
+function invocation(host: HostRef, command: string): { cmd: string; args: string[] } {
   if (host.name === 'local' || !host.host) {
-    return runLocal('sh', ['-c', command]);
+    return { cmd: 'sh', args: ['-c', command] };
   }
   const args = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10'];
   if (host.keyFile) {
     args.push('-i', host.keyFile);
   }
   args.push(`${host.user ?? 'root'}@${host.host}`, command);
+  return { cmd: 'ssh', args };
+}
+
+/** Ejecuta un comando shell en el host (local o por SSH). */
+export async function runShell(host: HostRef, command: string, signal?: AbortSignal): Promise<ExecResult> {
+  const { cmd, args } = invocation(host, command);
   void signal;
-  return runLocal('ssh', args);
+  return runLocal(cmd, args);
+}
+
+/** Como `runShell`, pero envia `stdin` al proceso (p. ej. `docker compose -f - up -d` con el YAML). */
+export async function runShellWithInput(host: HostRef, command: string, stdin: string, signal?: AbortSignal): Promise<ExecResult> {
+  const { cmd, args } = invocation(host, command);
+  void signal;
+  return runLocal(cmd, args, stdin);
 }
