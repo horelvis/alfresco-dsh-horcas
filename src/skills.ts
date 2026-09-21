@@ -206,9 +206,9 @@ Basta con una de estas frases; NO pidas un prompt detallado.
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.
 
-**Orden natural del hop (impuesto por el plugin):** `migrator_provision` levanta **solo infraestructura**
-(postgres/activemq/search) → `restore-target-db` restaura la BD → `schema-upgrade` arranca **Alfresco**
-sobre la BD ya migrada (auto-update de esquema) → `verify-target` comprueba **readiness + que la raiz
+**Orden natural del hop (impuesto por el plugin):** \`migrator_provision\` levanta **solo infraestructura**
+(postgres/activemq/search) → \`restore-target-db\` restaura la BD → \`schema-upgrade\` arranca **Alfresco**
+sobre la BD ya migrada (auto-update de esquema) → \`verify-target\` comprueba **readiness + que la raiz
 resuelve**. NUNCA arranques Alfresco antes del restore: crearia una raiz espuria y quedaria desalineado
 (root 404 pese a ready 200).
 
