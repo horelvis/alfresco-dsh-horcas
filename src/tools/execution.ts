@@ -11,7 +11,7 @@ import { requireSupportedUpgradePath, upgradePathWarnings } from '../domain/upgr
 import { assertDestinationHop, recordCompletedHop } from '../domain/hops.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
-import { loadCheckpoints } from '../domain/checkpoints.js';
+import { latestRunId, loadCheckpoints } from '../domain/checkpoints.js';
 import { campaignId, loadExperiences, recordAttempt, resumePoint, stateDir, latestRehearsal, type AttemptOutcome, type ExperienceAttempt } from '../domain/experience.js';
 import { gatherSourceFingerprint } from '../domain/fingerprint.js';
 import { dataDir } from '../domain/data-dir.js';
@@ -177,9 +177,10 @@ export function registerExecutionTools(ctx: Context): void {
     defineTool({
       name: 'migrator_run_status',
       timeoutMs: 15_000,
-      description: 'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos) del proyecto del workspace.',
+      description:
+        'Devuelve el estado de los checkpoints de un run (que pasos estan hechos/fallidos) del proyecto del workspace. Si no se indica runId, usa el run mas reciente.',
       parameters: {
-        runId: { type: 'string', required: true },
+        runId: { type: 'string', description: 'id de run; por defecto, el mas reciente' },
       },
       output: {
         schema: { type: 'array', items: { type: 'object', additionalProperties: true } },
@@ -188,7 +189,9 @@ export function registerExecutionTools(ctx: Context): void {
       },
       async execute(args, exec) {
         const config = await loadProject(undefined, workspaceCwd(exec));
-        const checkpoints = await loadCheckpoints(stateDir(), config.project, args.runId);
+        const runId = args.runId ?? (await latestRunId(stateDir(), config.project));
+        if (!runId) return [];
+        const checkpoints = await loadCheckpoints(stateDir(), config.project, runId);
         const latest = new Map<string, (typeof checkpoints)[number]>();
         for (const c of checkpoints) latest.set(c.step, c);
         return lossless([...latest.values()].map((c) => ({ ...c })));

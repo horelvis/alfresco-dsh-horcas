@@ -41,6 +41,15 @@ export async function loadCheckpoints(state: string, project?: string, runId?: s
     .filter((c) => (!project || c.project === project) && (!runId || c.runId === runId));
 }
 
+/** `runId` del checkpoint mas reciente del proyecto (evita exigir el id al consultar el estado). */
+export async function latestRunId(state: string, project?: string): Promise<string | undefined> {
+  let latest: Checkpoint | undefined;
+  for (const checkpoint of await loadCheckpoints(state, project)) {
+    if (!latest || checkpoint.at > latest.at) latest = checkpoint;
+  }
+  return latest?.runId;
+}
+
 /** Ultimo estado por paso (para saber que esta hecho y poder reanudar). */
 export async function latestByStep(state: string, project: string, runId: string): Promise<Map<string, Checkpoint>> {
   const map = new Map<string, Checkpoint>();
