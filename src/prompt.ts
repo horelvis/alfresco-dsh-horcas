@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import { lessonsTextSync } from './domain/lessons.js';
 
 interface SystemPromptContext {
   systemPrompt: {
@@ -73,5 +74,14 @@ export function installPrompt(ctx: SystemPromptContext): void {
     name: 'alfresco-migrator-context',
     order: -998,
     text: () => projectContextText(),
+  });
+  // Lecciones compartidas entre proyectos: memoria global (fuera del workspace).
+  ctx.systemPrompt.section({
+    name: 'alfresco-migrator-lessons',
+    order: -997,
+    text: () => {
+      const lessons = lessonsTextSync();
+      return lessons ? `Lecciones aprendidas (memoria compartida entre proyectos):\n${lessons}` : '';
+    },
   });
 }

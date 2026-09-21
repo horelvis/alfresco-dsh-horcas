@@ -43,6 +43,9 @@ export const READ_ONLY_TOOLS = [
   'migrator_journal',
   'migrator_resume',
   'migrator_help',
+  // Lecciones COMPARTIDAS entre proyectos (memoria global).
+  'migrator_lessons',
+  'migrator_lesson_add',
 ] as const;
 
 // Tools de escritura: actuan SOLO sobre el destino; requieren aprobacion explicita.
