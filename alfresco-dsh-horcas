@@ -40,10 +40,12 @@ if [ ! -f "$ROOT/dist/index.js" ]; then
   ( cd "$ROOT" && npm install && npm run build )
 fi
 
-# 3) El agente dsh usa DEEPSEEK_*; reutilizamos la config del modelo del .env.
+# 3) Credenciales/endpoint del LLM: dsh usa DEEPSEEK_*; reutilizamos la config del .env.
+#    OJO: el modelo del AGENTE lo fija el arnes (`agent-default-model` = deepseek-official/deepseek-flash);
+#    DEEPSEEK_DEFAULT_MODEL solo lo usa el plugin de busqueda web.
 export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-${OPENAI_API_KEY:-}}"
 export DEEPSEEK_BASE_URL="${DEEPSEEK_BASE_URL:-${OPENAI_BASE_URL:-}}"
-export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-v4.1-flash}}"
+export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_MODEL:-deepseek-flash}}"
 
 # Personalizacion de la UI web (titulo de la pestana).
 export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"
