@@ -2,6 +2,8 @@
  * Tool de PROVISION del destino: genera el compose por hop y (con execute) levanta el stack.
  * Respeta MIGRATOR_DST_PROVISION (auto|managed|external) y el auto-skip si ya esta desplegado.
  */
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { workspaceCwd } from '../infra/session.js';
@@ -14,8 +16,11 @@ import {
   provisionCompose,
   ensureDataDirs,
   ensureStackSecrets,
+  globalProperties,
   manualCommands,
+  writeStackConfig,
   shouldSkipProvision,
+  slug,
   stopRunningStacks,
   validateCompose,
   writeCompose,
@@ -131,7 +136,13 @@ export function registerProvisionTools(ctx: Context): void {
         if (mode === 'manual') {
           const files: string[] = [];
           for (const { request } of requests) files.push(await writeCompose(request, workDir));
-          await ensureStackSecrets(workDir); // deja .migrator/provision/stack.env para copiarlo al destino
+          const secrets = await ensureStackSecrets(workDir); // deja .migrator/provision/stack.env
+          // y el alfresco-global.properties local, para copiarlo al destino en manual.
+          await writeFile(
+            path.join(workDir, `${slug(project.project)}-global.properties`),
+            globalProperties(requests[0]!.request, secrets),
+            'utf8',
+          );
           return json({ mode, skipped: false, hops: files.length, files, stopped: [], manual, executed: false });
         }
 
@@ -142,8 +153,11 @@ export function registerProvisionTools(ctx: Context): void {
             const invalid = await validateCompose(host, renderCompose(request));
             if (invalid) throw new Error(`Compose invalido para el hop ${hop.to}: ${invalid}`);
           }
-          // Ya validado: crea las carpetas de datos en el DESTINO y para los stacks que no tocan (liberar 8080).
-          if (dstDir) await ensureDataDirs(host, dstDir, pgBind);
+          // Ya validado: crea las carpetas y el alfresco-global.properties (config de BD) en el DESTINO.
+          if (dstDir) {
+            await ensureDataDirs(host, dstDir, pgBind);
+            await writeStackConfig(host, dstDir, globalProperties(requests[0]!.request, await ensureStackSecrets(workDir)));
+          }
         }
         const stopped = execute ? await stopRunningStacks(host) : [];
         try {

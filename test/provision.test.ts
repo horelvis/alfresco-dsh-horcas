@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   ensureStackSecrets,
+  globalProperties,
   manualCommands,
   renderCompose,
   shouldSkipProvision,
@@ -58,6 +59,13 @@ describe('compose', () => {
     expect(yaml).not.toContain('alfresco-content:');
   });
 
+  it('con dataDir monta alfresco-global.properties generado (la imagen 7.4 arranca con el vacio)', () => {
+    const yaml = renderCompose({ ...request, dataDir: '/data/alfresco-dst-v2' });
+    expect(yaml).toContain(
+      '/data/alfresco-dst-v2/config/alfresco-global.properties:/usr/local/tomcat/shared/classes/alfresco-global.properties:ro',
+    );
+  });
+
   it('con dataDir + pgBind monta tambien la BD en la carpeta del DESTINO', () => {
     const yaml = renderCompose({ ...request, dataDir: '/data/alfresco-dst-v2', pgBind: true });
     expect(yaml).toContain('/data/alfresco-dst-v2/pg-data:/var/lib/postgresql/data');
@@ -82,6 +90,16 @@ describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
       commands.some((c) => c.includes('--env-file /tmp/demo.env') && c.includes('-f /tmp/docker-compose-26.2.yml up -d')),
     ).toBe(true);
     expect(commands.join(' ')).not.toMatch(/POSTGRES_PASSWORD=/);
+  });
+});
+
+describe('globalProperties', () => {
+  it('incluye la config de BD con el password del stack y dir.root', () => {
+    const props = globalProperties(request, { POSTGRES_PASSWORD: 'secret' });
+    expect(props).toContain('db.url=jdbc:postgresql://postgres:5432/alfresco');
+    expect(props).toContain('db.username=alfresco');
+    expect(props).toContain('db.password=secret');
+    expect(props).toContain('dir.root=/usr/local/tomcat/alf_data');
   });
 });
 

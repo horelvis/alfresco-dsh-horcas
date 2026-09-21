@@ -119,6 +119,11 @@ export function renderCompose(request: ComposeRequest): string {
   lines.push('      - "8080:8080"');
   lines.push('    volumes:');
   lines.push(request.dataDir ? `      - ${request.dataDir}/alf-data:/usr/local/tomcat/alf_data` : '      - alfresco-content:/usr/local/tomcat/alf_data');
+  if (request.dataDir) {
+    // La imagen 7.4 arranca con `alfresco-global.properties` VACIO: los DB_* de entorno no bastan y
+    // Spring falla al crear los beans de BD. Se monta un fichero generado con la config de BD.
+    lines.push(`      - ${request.dataDir}/config/alfresco-global.properties:/usr/local/tomcat/shared/classes/alfresco-global.properties:ro`);
+  }
   if (request.withShare) {
     lines.push('  share:');
     lines.push(`    image: alfresco/alfresco-share:${request.acsVersion}`);
@@ -136,7 +141,7 @@ export function renderCompose(request: ComposeRequest): string {
   return lines.join('\n') + '\n';
 }
 
-const slug = (version: string): string => version.replace(/[^A-Za-z0-9._-]/g, '-');
+export const slug = (version: string): string => version.replace(/[^A-Za-z0-9._-]/g, '-');
 
 /** Escribe el compose del hop en el directorio de trabajo y devuelve su ruta. */
 export async function writeCompose(request: ComposeRequest, workDir: string): Promise<string> {
@@ -229,6 +234,33 @@ export async function ensureStackSecrets(workDir: string): Promise<Record<string
   return secrets;
 }
 
+/**
+ * Contenido de `alfresco-global.properties` para el hop. La imagen 7.4 arranca con el fichero VACIO y los
+ * `DB_*` de entorno no se aplican; sin esto Spring falla creando los beans de BD. El resto (search,
+ * activemq) sigue por entorno en el compose.
+ */
+export function globalProperties(request: ComposeRequest, secrets: Record<string, string>): string {
+  const name = request.database?.name ?? 'alfresco';
+  const user = request.database?.user ?? 'alfresco';
+  return [
+    'db.driver=org.postgresql.Driver',
+    `db.url=jdbc:postgresql://postgres:5432/${name}`,
+    `db.username=${user}`,
+    `db.password=${secrets.POSTGRES_PASSWORD ?? ''}`,
+    'dir.root=/usr/local/tomcat/alf_data',
+    '',
+  ].join('\n');
+}
+
+/** Escribe (en el DESTINO) el `alfresco-global.properties` del hop antes de levantar. */
+export async function writeStackConfig(host: HostRef, dataDir: string, content: string): Promise<void> {
+  const b64 = Buffer.from(content, 'utf8').toString('base64');
+  await runShell(
+    host,
+    `mkdir -p "${dataDir}/config" && printf '%s' '${b64}' | base64 -d > "${dataDir}/config/alfresco-global.properties"`,
+  );
+}
+
 /** Prefijo de entorno con los secretos y un DOCKER_CONFIG limpio (evita el keychain de macOS por SSH). */
 function composeEnvPrefix(secrets: Record<string, string>): string {
   const env = Object.entries(secrets).map(([key, value]) => `${key}='${value}'`).join(' ');
@@ -244,12 +276,18 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
   const content = renderCompose(request);
   const b64 = Buffer.from(content, 'utf8').toString('base64');
   const file = `/tmp/docker-compose-${slug(request.acsVersion)}.yml`;
-  const envFile = `/tmp/${slug(request.projectName)}.env`;
+  const project = slug(request.projectName);
+  const envFile = `/tmp/${project}.env`;
+  const globalFile = `/tmp/${project}-global.properties`;
   const commands: string[] = [];
-  // Los secretos NO se incluyen: se copian del stack.env local (no viajan al LLM).
+  // Los secretos/config NO se incluyen: se copian del estado local (no viajan al LLM).
   commands.push(`scp .migrator/provision/stack.env <usuario>@<host>:${envFile}`);
-  if (dstDir) commands.push(`sudo mkdir -p "${dstDir}/alf-data"${request.pgBind ? ` "${dstDir}/pg-data"` : ''}`);
+  if (dstDir) {
+    commands.push(`scp .migrator/provision/${project}-global.properties <usuario>@<host>:${globalFile}`);
+    commands.push(`sudo mkdir -p "${dstDir}/alf-data" "${dstDir}/config"${request.pgBind ? ` "${dstDir}/pg-data"` : ''}`);
+  }
   commands.push(`printf '%s' '${b64}' | base64 -d | sudo tee ${file} >/dev/null`);
+  if (dstDir) commands.push(`sudo cp ${globalFile} "${dstDir}/config/alfresco-global.properties"`);
   commands.push(`sudo docker compose -p "${request.projectName}" down --remove-orphans`);
   commands.push(
     `sudo DOCKER_CONFIG=$(d=$(mktemp -d) && printf '{}' > "$d/config.json" && echo "$d") docker compose --env-file ${envFile} -p "${request.projectName}" -f ${file} up -d --remove-orphans`,
