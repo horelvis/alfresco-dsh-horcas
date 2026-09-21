@@ -13,6 +13,7 @@ import {
   projectToComposeRequest,
   provisionCompose,
   ensureDataDirs,
+  manualCommands,
   shouldSkipProvision,
   stopRunningStacks,
   validateCompose,
@@ -22,6 +23,7 @@ import {
 import { stateDir } from '../domain/experience.js';
 import { computeAlfrescoMemory, type AlfrescoMemory } from '../domain/memory.js';
 import { runShell, type HostRef } from '../infra/exec.js';
+import { describeError } from '../infra/errors.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 const json = <T>(value: T): never => JSON.parse(JSON.stringify(value)) as never;
@@ -49,7 +51,7 @@ export function registerProvisionTools(ctx: Context): void {
     defineTool({
       name: 'migrator_provision',
       description:
-        'Provisiona el DESTINO en Docker Compose por hop: para los stacks que ya corren (p. ej. un 26.2 que no toca) y levanta docker-compose-<hop>.yml. Auto-skip con MIGRATOR_DST_PROVISION=auto|managed|external; el proyecto a parar se fija con MIGRATOR_DST_COMPOSE_PROJECT.',
+        'Provisiona el DESTINO en Docker Compose por hop: valida el compose, para los stacks que no tocan y levanta docker-compose-<hop>.yml. SIEMPRE devuelve los comandos manuales (copiar y ejecutar en el destino, con sudo) por si no hay SSH. Modos: MIGRATOR_DST_PROVISION=auto|managed|external|manual; proyecto a parar: MIGRATOR_DST_COMPOSE_PROJECT.',
       parameters: {
         execute: { type: 'boolean', description: 'false = solo generar los compose (por defecto)' },
         withShare: { type: 'boolean', description: 'incluir Share en el compose' },
@@ -69,62 +71,91 @@ export function registerProvisionTools(ctx: Context): void {
             hops: { type: 'number' },
             files: { type: 'array', items: { type: 'string' } },
             stopped: { type: 'array', items: { type: 'string' } },
+            manual: { type: 'array', items: { type: 'object', additionalProperties: true } },
+            error: { type: 'string' },
             executed: { type: 'boolean' },
           },
         },
         render: (_args, value) => {
-          const v = value as { mode: string; skipped: boolean; files: string[]; stopped?: string[]; executed: boolean };
+          const v = value as {
+            mode: string;
+            skipped: boolean;
+            files: string[];
+            stopped?: string[];
+            manual?: Array<{ hop: string; commands: string[] }>;
+            error?: string;
+            executed: boolean;
+          };
           const stopped = v.stopped && v.stopped.length > 0 ? `\nparados: ${v.stopped.join(', ')}` : '';
-          return text(
-            `modo=${v.mode} omitido=${v.skipped} ejecutado=${v.executed}${stopped}\n${v.files.map((f) => `- ${f}`).join('\n')}`,
-          );
+          const err = v.error ? `\nERROR: ${v.error}` : '';
+          const files = v.files.length > 0 ? `\n${v.files.map((f) => `- ${f}`).join('\n')}` : '';
+          const manual =
+            v.manual && v.manual.length > 0
+              ? `\n\nComandos manuales (en el DESTINO, con sudo):\n${v.manual
+                  .map((m) => `[hop ${m.hop}]\n${m.commands.map((c) => `  ${c}`).join('\n')}`)
+                  .join('\n')}`
+              : '';
+          return text(`modo=${v.mode} omitido=${v.skipped} ejecutado=${v.executed}${stopped}${err}${files}${manual}`);
         },
       },
       async execute(args, exec) {
         const project = await loadProject(undefined, workspaceCwd(exec));
-        const mode = process.env.MIGRATOR_DST_PROVISION ?? 'auto';
+        const mode = (process.env.MIGRATOR_DST_PROVISION ?? 'auto').toLowerCase();
         const host = destinationHost(project);
-        const execute = args.execute === true;
+        const execute = args.execute === true && mode !== 'manual';
         if (execute) requireDistinctTarget(project);
         const dstDir = args.dstDir ?? process.env.MIGRATOR_DST_DIR;
         if (execute && !dstDir) {
           throw new Error(
-            'Falta la carpeta del DESTINO: pasa dstDir (p.ej. /Users/horelvis/git/alfresco-dst-v2) o define ' +
-              'MIGRATOR_DST_DIR. El content store y la BD de la version se montan ahi (<dstDir>/alf-data y <dstDir>/pg-data).',
+            'Falta la carpeta del DESTINO (EN EL HOST DESTINO, por SSH): pasa dstDir o define MIGRATOR_DST_DIR. ' +
+              'El content store y la BD de la version se montan ahi (<dstDir>/alf-data y <dstDir>/pg-data).',
           );
         }
         const running = execute && (await destinationRunning(host));
         if (execute && shouldSkipProvision(mode, running)) {
-          return json({ mode, skipped: true, hops: 0, files: [], executed: false });
+          return json({ mode, skipped: true, hops: 0, files: [], stopped: [], manual: [], executed: false });
         }
         const hops = requireSupportedUpgradePath(project.source.version, project.target.version);
         const workDir = `${stateDir()}/provision`;
+        const memTotal = await dockerMemTotal(host);
+        const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
+        const requests = hops.map((hop) => ({
+          hop,
+          request: projectToComposeRequest(project, hop.to, args.withShare === true, memory, dstDir),
+        }));
+        // SIEMPRE: comandos manuales listos para copiar y ejecutar en el DESTINO (sin SSH o con sudo).
+        const manual = requests.map(({ hop, request }) => ({ hop: hop.to, commands: manualCommands(request, dstDir) }));
+
+        if (mode === 'manual') {
+          const files: string[] = [];
+          for (const { request } of requests) files.push(await writeCompose(request, workDir));
+          return json({ mode, skipped: false, hops: files.length, files, stopped: [], manual, executed: false });
+        }
+
         const files: string[] = [];
         // VALIDAR los composes ANTES de parar nada: un compose invalido no debe dejar el destino caido.
         if (execute) {
-          for (const hop of hops) {
-            const invalid = await validateCompose(
-              host,
-              renderCompose(projectToComposeRequest(project, hop.to, args.withShare === true, undefined, dstDir)),
-            );
+          for (const { hop, request } of requests) {
+            const invalid = await validateCompose(host, renderCompose(request));
             if (invalid) throw new Error(`Compose invalido para el hop ${hop.to}: ${invalid}`);
           }
+          // Ya validado: crea las carpetas de datos en el DESTINO y para los stacks que no tocan (liberar 8080).
+          if (dstDir) await ensureDataDirs(host, dstDir);
         }
-        // Ya validado: crea las carpetas de datos en el DESTINO y para los stacks que no tocan (liberar 8080).
-        if (execute && dstDir) await ensureDataDirs(host, dstDir);
         const stopped = execute ? await stopRunningStacks(host) : [];
-        const memTotal = await dockerMemTotal(host);
-        const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
-        for (const hop of hops) {
-          const request = projectToComposeRequest(project, hop.to, args.withShare === true, memory, dstDir);
-          if (execute) {
-            const result = await provisionCompose(request, workDir, host);
-            files.push(result.file);
-          } else {
-            files.push(await writeCompose(request, workDir));
+        try {
+          for (const { request } of requests) {
+            if (execute) {
+              files.push((await provisionCompose(request, workDir, host)).file);
+            } else {
+              files.push(await writeCompose(request, workDir));
+            }
           }
+        } catch (error) {
+          // No se pudo por SSH: devolvemos los comandos manuales en vez de perderlos en el error.
+          return json({ mode, skipped: false, hops: files.length, files, stopped, manual, executed: false, error: describeError(error) });
         }
-        return json({ mode, skipped: false, hops: files.length, files, stopped, executed: execute });
+        return json({ mode, skipped: false, hops: files.length, files, stopped, manual, executed: execute });
       },
     }),
   );

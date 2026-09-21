@@ -200,6 +200,8 @@ Basta con una de estas frases; NO pidas un prompt detallado.
   El DESTINO se provisiona **por hop**: si aparece un stack previo (p.ej. un 26.2) **parado**, es
   **intencionado** (el migrator lo para y levanta la version del hop). **NO lo restaures** ni propongas
   \`docker compose up\` sobre el stack antiguo; provisiona la version del hop.
+  Si **no hay SSH** o hace falta **sudo**, la tool ya devuelve \`manual\` con los comandos listos para
+  **copiar y ejecutar en el destino** (compose en base64 + \`docker compose ... up -d\`): ofréceselos al usuario.
 
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.

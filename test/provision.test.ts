@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderCompose, shouldSkipProvision, stopTargets } from '../src/domain/provision.js';
+import { manualCommands, renderCompose, shouldSkipProvision, stopTargets } from '../src/domain/provision.js';
 import { computeAlfrescoMemory, type MemoryData } from '../src/domain/memory.js';
 import { evaluateUpgradeLog, waitForUpgrade } from '../src/domain/schema-upgrade.js';
 
@@ -55,6 +55,16 @@ describe('compose', () => {
     expect(shouldSkipProvision('auto', true)).toBe(true);
     expect(shouldSkipProvision('auto', false)).toBe(false);
     expect(shouldSkipProvision('managed', true)).toBe(false);
+  });
+});
+
+describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
+  it('incluye carpetas, compose en base64, down y up con sudo', () => {
+    const commands = manualCommands({ ...request, dataDir: '/data/v2' }, '/data/v2');
+    expect(commands[0]).toContain('mkdir -p "/data/v2/alf-data" "/data/v2/pg-data"');
+    expect(commands.some((c) => c.includes('base64 -d') && c.includes('tee /tmp/docker-compose-26.2.yml'))).toBe(true);
+    expect(commands.some((c) => c.includes('docker compose -p "demo" down'))).toBe(true);
+    expect(commands.some((c) => c.includes('docker compose -p "demo" -f /tmp/docker-compose-26.2.yml up -d'))).toBe(true);
   });
 });
 

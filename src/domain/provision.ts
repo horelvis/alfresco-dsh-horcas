@@ -190,6 +190,22 @@ export async function ensureDataDirs(host: HostRef, dataDir: string): Promise<vo
   await runShell(host, `mkdir -p "${dataDir}/alf-data" "${dataDir}/pg-data"`);
 }
 
+/**
+ * Comandos listos para COPIAR Y EJECUTAR en el DESTINO, para cuando no hay SSH o el usuario necesita
+ * `sudo`. El compose viaja en base64 (no depende de ficheros locales).
+ */
+export function manualCommands(request: ComposeRequest, dstDir?: string): string[] {
+  const content = renderCompose(request);
+  const b64 = Buffer.from(content, 'utf8').toString('base64');
+  const file = `/tmp/docker-compose-${slug(request.acsVersion)}.yml`;
+  const commands: string[] = [];
+  if (dstDir) commands.push(`sudo mkdir -p "${dstDir}/alf-data" "${dstDir}/pg-data"`);
+  commands.push(`printf '%s' '${b64}' | base64 -d | sudo tee ${file} >/dev/null`);
+  commands.push(`sudo docker compose -p "${request.projectName}" down --remove-orphans`);
+  commands.push(`sudo docker compose -p "${request.projectName}" -f ${file} up -d --remove-orphans`);
+  return commands;
+}
+
 /** Escribe y levanta el stack del hop. */
 export async function provisionCompose(
   request: ComposeRequest,
