@@ -184,8 +184,10 @@ Basta con una de estas frases; NO pidas un prompt detallado.
   6. con aprobacion, ejecuta (\`execute=true\`) y verifica (\`verify-target\`);
   7. registra el intento (\`migrator_rehearsal_record\`).
   Si el DESTINO **no** esta en la version del hop, **no escribas**: indica que hay que provisionar esa version y para.
-- **"continuar migracion"** (o "sigue"/"retoma"): lee el estado (\`.migrator/hops.jsonl\`, \`checkpoints.jsonl\`,
-  experiencia), situa el punto de reanudacion (\`resumeFrom\`) y continua desde ahi con el mismo runbook.
+- **"continuar migracion"** (o "sigue"/"retoma"): lee el estado durable (\`.migrator/hops.jsonl\`,
+  \`checkpoints.jsonl\`, experiencia), situa el punto de reanudacion (\`resumeFrom\`), **recupera el contexto de
+  chats anteriores del mismo workspace** con \`session_search\`/\`session_event_read\` (decisiones, plan,
+  aprobaciones) y continua desde ahi con el mismo runbook. NO repitas el assessment si ya hay estado.
 
 Pide por \`ask_user_question\` **solo** lo imprescindible que no puedas resolver del workspace/estado.
 

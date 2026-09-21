@@ -118,6 +118,12 @@ export const GUARDRAIL_ALLOW = [
   'update_goal',
   // Via de preguntas al humano.
   'ask_user_question',
+  // Consulta de sesiones PREVIAS (contexto de chats anteriores del mismo workspace). Read-only.
+  'session_search',
+  'session_event_search',
+  'session_event_read',
+  'session_trace',
+  'session_event_trace',
 ] as const;
 
 /** Sugerencia accionable para una tool denegada por el guardrail. */
