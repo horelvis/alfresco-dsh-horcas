@@ -17,7 +17,9 @@ export function conductSectionText(): string {
     '(ask_user_question) solo si falta un dato imprescindible; no pidas confirmacion de lo ya aprobado. ' +
     'Evita relleno, disculpas y repeticiones. ' +
     'Entradas minimas: si el usuario dice solo "iniciar migracion" o "continuar migracion" (o equivalente), ' +
-    'carga la skill `alfresco-migration-playbook` y sigue su runbook; no le pidas un prompt detallado.'
+    'carga la skill `alfresco-migration-playbook` y sigue su runbook; no le pidas un prompt detallado. ' +
+    'Al INICIAR un chat (primer mensaje del usuario: saludo, "ayuda" o vacio) muestra la ayuda de arranque ' +
+    'con `migrator_help` (frases de ejemplo) y espera; no hagas trabajo hasta que el usuario elija.'
   );
 }
 

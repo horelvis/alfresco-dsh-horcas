@@ -189,6 +189,13 @@ Basta con una de estas frases; NO pidas un prompt detallado.
   chats anteriores del mismo workspace** con \`session_search\`/\`session_event_read\` (decisiones, plan,
   aprobaciones) y continua desde ahi con el mismo runbook. NO repitas el assessment si ya hay estado.
 
+- **"estado de la migracion"** (o "donde estamos"): llama a \`migrator_resume\` y muestra el resumen
+  (hop actual, backup, destino, siguiente accion) SIN re-ejecutar comprobaciones.
+- **"ayuda"** o primer mensaje del chat: llama a \`migrator_help\` (frases de ejemplo) y espera.
+
+Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
+es lo que permite que **otro chat** continúe sin repetir el trabajo.
+
 Pide por \`ask_user_question\` **solo** lo imprescindible que no puedas resolver del workspace/estado.
 
 ## Ante una peticion amplia (p.ej. "iniciar evaluacion de migracion de version alfresco")

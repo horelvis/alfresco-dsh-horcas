@@ -39,6 +39,10 @@ export const READ_ONLY_TOOLS = [
   'migrator_rehearsal_record',
   'migrator_experience_latest',
   'migrator_environment_parity',
+  // Memoria durable entre chats y ayuda de arranque (estado local, read-only para origen/destino).
+  'migrator_journal',
+  'migrator_resume',
+  'migrator_help',
 ] as const;
 
 // Tools de escritura: actuan SOLO sobre el destino; requieren aprobacion explicita.
