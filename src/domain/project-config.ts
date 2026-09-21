@@ -12,6 +12,8 @@ export interface ProjectDatabase {
   port?: number;
   name?: string;
   user?: string;
+  /** Nombre del contenedor de PostgreSQL en el DESTINO (restore/verify via `docker exec`). */
+  container?: string;
 }
 
 export interface ProjectHost {

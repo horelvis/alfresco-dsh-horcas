@@ -7,10 +7,10 @@
  * Overrides de entorno (identicos al core): `MIGRATOR_DB_DUMP_CMD` ({out}), `MIGRATOR_DB_RESTORE_CMD`
  * ({in}), `MIGRATOR_REINDEX_CMD` ({prefixesFile},{dbUrl}), `MIGRATOR_DST_PROVISION`.
  */
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { HostRef } from '../infra/exec.js';
-import { runShell, substitute, type ExecResult } from '../infra/exec.js';
+import { runShell, runShellWithInput, substitute, type ExecResult } from '../infra/exec.js';
 import type { ProjectConfig } from '../domain/project-config.js';
 import { planContentCopy } from './content-copy.js';
 import { resolveContentStorePath } from './content-store.js';
@@ -178,11 +178,29 @@ const restoreTargetDb: StepDefinition = {
       return skipped('restore-target-db', `dry-run: restore de ${inFile}`);
     }
     if (override) {
-      return requireResult('restore-target-db', await runShell(ctx.destination, substitute(override, { in: inFile })));
+      const outcome = requireResult('restore-target-db', await runShell(ctx.destination, substitute(override, { in: inFile })));
+      return { ...outcome, command: undefined }; // el comando puede llevar credenciales: no se expone
     }
     const db = ctx.project.target.database;
     const user = db?.user ?? 'alfresco';
-    const command = `pg_restore -c --if-exists -h ${db?.host ?? 'localhost'} -p ${db?.port ?? 5432} -U ${user} -d ${db?.name ?? 'alfresco'} "${inFile}"`;
+    const name = db?.name ?? 'alfresco';
+    // El dump esta en el host de CONTROL: se envia por STDIN al `pg_restore` DENTRO del contenedor de
+    // Postgres del DESTINO (el host destino no tiene pg_restore en el PATH).
+    let dump = '';
+    try {
+      dump = await readFile(inFile, 'utf8');
+    } catch {
+      dump = '';
+    }
+    if (dump) {
+      const container = process.env.MIGRATOR_DST_PG_CONTAINER ?? db?.container ?? `${ctx.project.project}-postgres-1`;
+      const password = process.env.MIGRATOR_DST_DB_PASSWORD ?? process.env.MIGRATOR_SRC_DB_PASSWORD;
+      const envFlag = password ? `-e PGPASSWORD='${password}' ` : '';
+      const command = `docker exec -i ${envFlag}${container} pg_restore -c --if-exists --no-owner -U ${user} -d ${name}`;
+      const outcome = requireResult('restore-target-db', await runShellWithInput(ctx.destination, command, dump));
+      return { ...outcome, command: undefined };
+    }
+    const command = `pg_restore -c --if-exists -h ${db?.host ?? 'localhost'} -p ${db?.port ?? 5432} -U ${user} -d ${name} "${inFile}"`;
     return requireResult('restore-target-db', await runShell(ctx.destination, command));
   },
 };

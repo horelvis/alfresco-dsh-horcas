@@ -100,6 +100,7 @@
         "port": { "type": "integer" },
         "name": { "type": "string" },
         "user": { "type": "string" },
+        "container": { "type": "string", "description": "Nombre del contenedor de PostgreSQL en el DESTINO (restore/verify via docker exec)." },
         "passwordRef": { "$ref": "#/$defs/secretRef" },
         "sizeBytes": { "type": "integer", "minimum": 0, "default": 0 },
         "via": { "enum": ["jdbc", "ssh", "tunnel"], "default": "jdbc" },
