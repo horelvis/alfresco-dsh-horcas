@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { countCheck, storeCheck, verdictOf, verifyParity, type ParityProbes } from '../src/domain/verification.js';
+import { dbConfigFromYaml } from '../src/infra/pg.js';
 import { parseProjectYaml } from '../src/domain/project-config.js';
 
 const project = parseProjectYaml('project: demo\nsource:\n  version: "7.1.0"\ntarget:\n  version: "26.2"\n');
@@ -57,6 +58,20 @@ describe('verificacion de paridad origen->destino', () => {
     const report = await verifyParity(project, probes({ targetStore: async () => undefined }));
     expect(report.verdict).toBe('WARN');
     expect(report.notes.length).toBeGreaterThan(0);
+  });
+
+  it('dbConfigFromYaml usa el host del YAML (no localhost) y el password del entorno', () => {
+    const cfg = dbConfigFromYaml(
+      { host: '192.168.100.58', port: 5432, name: 'alfresco', user: 'alfresco' },
+      'DST',
+      { MIGRATOR_DST_DB_PASSWORD: 'x' },
+    );
+    expect(cfg.host).toBe('192.168.100.58');
+    expect(cfg.password).toBe('x');
+  });
+
+  it('el entorno MIGRATOR_DST_DB_HOST sobrescribe el YAML', () => {
+    expect(dbConfigFromYaml({ host: 'yaml' }, 'DST', { MIGRATOR_DST_DB_HOST: 'env' }).host).toBe('env');
   });
 
   it('verifyParity: una BD inaccesible no lanza (nota con detalle) y da WARN', async () => {

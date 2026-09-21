@@ -9,7 +9,7 @@
  */
 import type { HostRef } from '../infra/exec.js';
 import { runShell } from '../infra/exec.js';
-import { connectSource, queryRows, sourceDbConfigFromEnv, targetDbConfigFromEnv, type SourceDbConfig } from '../infra/pg.js';
+import { connectSource, dbConfigFromYaml, queryRows, sourceDbConfigFromEnv, targetDbConfigFromEnv, type SourceDbConfig } from '../infra/pg.js';
 import { describeError } from '../infra/errors.js';
 import { scanStore } from './assessment.js';
 import type { ProjectConfig } from './project-config.js';
@@ -131,6 +131,12 @@ export async function dbCounts(config: SourceDbConfig): Promise<Record<string, n
 
 export const sourceCounts = (): Promise<Record<string, number>> => dbCounts(sourceDbConfigFromEnv());
 export const targetCounts = (): Promise<Record<string, number>> => dbCounts(targetDbConfigFromEnv());
+
+/** Recuentos usando los HECHOS del proyecto (YAML): el host del destino sale del YAML, no de `localhost`. */
+export const sourceCountsFor = (project: ProjectConfig): Promise<Record<string, number>> =>
+  dbCounts(dbConfigFromYaml(project.source.database, 'SRC'));
+export const targetCountsFor = (project: ProjectConfig): Promise<Record<string, number>> =>
+  dbCounts(dbConfigFromYaml(project.target.database, 'DST'));
 
 /** Inventario de un content store FS local; `undefined` si no es FS o no hay ruta. */
 export async function localStoreInventory(store?: { type?: string; path?: string }): Promise<StoreInventory | undefined> {

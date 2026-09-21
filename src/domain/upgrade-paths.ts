@@ -92,19 +92,32 @@ export function resolveUpgradePath(fromRaw: string, to: string): Hop[] {
   if (!rule) {
     return [];
   }
-  const total = rule.hops.length;
-  return rule.hops.map((hop, index) => {
+  const sameMinor = (a: string, b: string): boolean => {
+    const pa = parseVersion(a);
+    const pb = parseVersion(b);
+    return (pa[0] ?? 0) === (pb[0] ?? 0) && (pa[1] ?? 0) === (pb[1] ?? 0);
+  };
+  // La matriz describe la cadena COMPLETA (p.ej. ... -> 25.3 -> $TO); si el destino es un hop intermedio
+  // (p.ej. 7.4), hay que CORTAR ahi y no incluir hops posteriores al destino.
+  const hops: Hop[] = [];
+  for (const hop of rule.hops) {
     const below = hop.classBelow && compareVersions(fromRaw, hop.classBelow.version) < 0;
     const pathClass = below ? (hop.classBelow as NonNullable<HopSpec['classBelow']>).class : hop.class;
     const noteIds = below ? (hop.classBelow?.notes ?? hop.notes ?? []) : (hop.notes ?? []);
-    return {
+    const resolvedTo = substitute(hop.to, fromRaw, to);
+    hops.push({
       from: substitute(hop.from, fromRaw, to),
-      to: substitute(hop.to, fromRaw, to),
-      intermediate: index < total - 1,
+      to: resolvedTo,
+      intermediate: false,
       pathClass,
       notes: noteIds.map((id) => data.notes[id] ?? id),
-    };
+    });
+    if (sameMinor(resolvedTo, to)) break;
+  }
+  hops.forEach((hop, index) => {
+    hop.intermediate = index < hops.length - 1;
   });
+  return hops;
 }
 
 /**

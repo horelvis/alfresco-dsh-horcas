@@ -40,6 +40,8 @@ export interface ProjectConfig {
     deployment?: string;
     /** URL REST del DESTINO (verificacion de version/salud). */
     baseUrl?: string;
+    /** Carpeta base EN EL HOST DESTINO para los datos del hop (content store + pg-data). */
+    dataDir?: string;
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; volume?: string };
     search?: { engine?: string };
@@ -90,6 +92,7 @@ export function parseProjectYaml(text: string): ProjectConfig {
       edition: target.edition ? String(target.edition) : undefined,
       deployment: target.deployment ? String(target.deployment) : undefined,
       baseUrl: target.baseUrl ? String(target.baseUrl) : undefined,
+      dataDir: target.dataDir ? String(target.dataDir) : undefined,
       database: target.database as ProjectDatabase | undefined,
       contentStore: target.contentStore as ProjectConfig['target']['contentStore'],
       search: target.search as ProjectConfig['target']['search'],

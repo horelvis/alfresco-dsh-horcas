@@ -30,6 +30,17 @@ describe('matriz de upgrade (data-driven)', () => {
     expect(hops.map((h) => `${h.from}->${h.to}`)).toEqual(['7.1.0->7.4', '7.4->25.3', '25.3->26.2']);
   });
 
+  it('destino 7.4 -> un UNICO hop (no incluye hops posteriores al destino)', () => {
+    const hops = resolveUpgradePath('7.1.0', '7.4');
+    expect(hops.map((h) => `${h.from}->${h.to}`)).toEqual(['7.1.0->7.4']);
+    expect(hops[0]?.intermediate).toBe(false);
+  });
+
+  it('destino 25.3 -> corta en 25.3 (no incluye 25.3->26.2)', () => {
+    const hops = resolveUpgradePath('7.1.0', '25.3');
+    expect(hops.map((h) => `${h.from}->${h.to}`)).toEqual(['7.1.0->7.4', '7.4->25.3']);
+  });
+
   it('un salto de version no soportado se rechaza', () => {
     expect(() => requireSupportedUpgradePath('4.0', '26.2')).toThrow(/NO soportado/i);
   });

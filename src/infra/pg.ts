@@ -62,6 +62,25 @@ export function targetDbConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Sou
   };
 }
 
+/**
+ * Config de BD a partir de los HECHOS del proyecto (YAML: host/puerto/base/usuario) y del `.env` SOLO
+ * para secretos/overrides (`MIGRATOR_{SRC|DST}_DB_*`). El host del destino vive en el YAML, no en `.env`.
+ */
+export function dbConfigFromYaml(
+  db: { host?: string; port?: number; name?: string; user?: string } | undefined,
+  kind: 'SRC' | 'DST',
+  env: NodeJS.ProcessEnv = process.env,
+): SourceDbConfig {
+  const fromUrl = parsePostgresUrl(env[`MIGRATOR_${kind}_DB_URL`]);
+  return {
+    host: env[`MIGRATOR_${kind}_DB_HOST`] ?? fromUrl.host ?? db?.host ?? 'localhost',
+    port: Number.parseInt(env[`MIGRATOR_${kind}_DB_PORT`] ?? String(fromUrl.port ?? db?.port ?? 5432), 10),
+    name: env[`MIGRATOR_${kind}_DB_NAME`] ?? fromUrl.database ?? db?.name ?? 'alfresco',
+    user: env[`MIGRATOR_${kind}_DB_USER`] ?? db?.user ?? 'alfresco',
+    password: env[`MIGRATOR_${kind}_DB_PASSWORD`],
+  };
+}
+
 export async function connectSource(config: SourceDbConfig): Promise<pg.Client> {
   const client = new Client({
     host: config.host,

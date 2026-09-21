@@ -9,8 +9,8 @@ import { loadProject } from '../domain/project-config.js';
 import {
   localStoreInventory,
   remoteStoreInventory,
-  sourceCounts,
-  targetCounts,
+  sourceCountsFor,
+  targetCountsFor,
   verifyParity,
   type CountCheck,
   type StoreCheck,
@@ -66,8 +66,8 @@ export function registerVerifyTools(ctx: Context): void {
         const report = await verifyParity(
           project,
           {
-            sourceCounts,
-            targetCounts,
+            sourceCounts: () => sourceCountsFor(project),
+            targetCounts: () => targetCountsFor(project),
             sourceStore: async () => {
               const resolved = await resolveContentStorePath(sourceStore, { name: 'local' });
               return resolved ? localStoreInventory({ type: sourceStore?.type, path: resolved }) : undefined;

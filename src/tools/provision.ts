@@ -110,7 +110,8 @@ export function registerProvisionTools(ctx: Context): void {
         const host = destinationHost(project);
         const execute = args.execute === true && mode !== 'manual';
         if (execute) requireDistinctTarget(project);
-        const dstDir = args.dstDir ?? process.env.MIGRATOR_DST_DIR;
+        // Hecho del proyecto (YAML) primero; el parametro/entorno solo lo sobrescriben.
+        const dstDir = args.dstDir ?? project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
         const pgBind = ['true', '1', 'yes', 'on'].includes((process.env.MIGRATOR_DST_PG_BIND ?? '').toLowerCase());
         if (execute && !dstDir) {
           throw new Error(
