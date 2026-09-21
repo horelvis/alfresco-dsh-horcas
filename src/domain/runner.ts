@@ -2,6 +2,8 @@
  * Runner de pasos: ejecuta la composicion que el agente decide, registra checkpoints (reanudable) y
  * respeta el guard de origen (nunca escribe en el origen).
  */
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { latestByStep, saveCheckpoint, type StepStatus } from './checkpoints.js';
 import { stepById, type StepContext, type StepOutcome } from './steps.js';
 
@@ -32,6 +34,9 @@ export async function runSteps(
   options: RunnerOptions = {},
 ): Promise<RunReport> {
   const results: StepOutcome[] = [];
+  // Directorio de trabajo del run (p.ej. donde `backup-source-db` escribe el dump): lo crea el RUNNER con
+  // fs del plugin, para que el agente no tenga que hacer `mkdir` por bash (sandbox read-only).
+  await mkdir(path.join(ctx.state, ctx.runId), { recursive: true });
   const done = options.resume ? await latestByStep(ctx.state, ctx.project.project, ctx.runId) : new Map();
 
   for (const id of stepIds) {

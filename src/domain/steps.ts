@@ -7,6 +7,8 @@
  * Overrides de entorno (identicos al core): `MIGRATOR_DB_DUMP_CMD` ({out}), `MIGRATOR_DB_RESTORE_CMD`
  * ({in}), `MIGRATOR_REINDEX_CMD` ({prefixesFile},{dbUrl}), `MIGRATOR_DST_PROVISION`.
  */
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import type { HostRef } from '../infra/exec.js';
 import { runShell, substitute, type ExecResult } from '../infra/exec.js';
 import type { ProjectConfig } from '../domain/project-config.js';
@@ -96,6 +98,8 @@ const backupSourceDb: StepDefinition = {
       return skipped('backup-source-db', `dry-run: dump a ${out}`);
     }
     if (override) {
+      // El dump se escribe en un fichero de trabajo: asegura su directorio (fs del plugin, no sandbox).
+      await mkdir(path.dirname(out), { recursive: true });
       return requireResult('backup-source-db', await runShell(ctx.source ?? { name: 'local' }, substitute(override, { out })));
     }
     return skipped('backup-source-db', 'sin MIGRATOR_DB_DUMP_CMD (BD interna al contenedor)');

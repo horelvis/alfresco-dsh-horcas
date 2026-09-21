@@ -206,6 +206,9 @@ Basta con una de estas frases; NO pidas un prompt detallado.
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.
 
+**No crees directorios ni ficheros de trabajo con \`bash\`** (el sandbox es read-only): el migrador crea su
+directorio de run (\`.migrator/<runId>/\`) y sus artefactos con sus propias tools.
+
 **Los HECHOS vivos mandan sobre el journal.** Antes de bloquear por un hito antiguo (p.ej. "blocker" de una
 versión de destino previa), comprueba el estado ACTUAL con \`migrator_resume\` (\`hopOk\`, \`destinationVersion\`);
 si contradice el journal, sigue con el estado actual y anota un hito nuevo. Y ojo: en \`preflight-target\`,
