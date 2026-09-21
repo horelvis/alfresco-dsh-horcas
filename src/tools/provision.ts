@@ -13,6 +13,7 @@ import {
   projectToComposeRequest,
   provisionCompose,
   shouldSkipProvision,
+  stopRunningStacks,
   writeCompose,
 } from '../domain/provision.js';
 import { stateDir } from '../domain/experience.js';
@@ -45,7 +46,7 @@ export function registerProvisionTools(ctx: Context): void {
     defineTool({
       name: 'migrator_provision',
       description:
-        'Provisiona el DESTINO en Docker Compose por hop (genera docker-compose-<hop>.yml y levanta el stack). Auto-skip con MIGRATOR_DST_PROVISION=auto|managed|external.',
+        'Provisiona el DESTINO en Docker Compose por hop: para los stacks que ya corren (p. ej. un 26.2 que no toca) y levanta docker-compose-<hop>.yml. Auto-skip con MIGRATOR_DST_PROVISION=auto|managed|external; el proyecto a parar se fija con MIGRATOR_DST_COMPOSE_PROJECT.',
       parameters: {
         execute: { type: 'boolean', description: 'false = solo generar los compose (por defecto)' },
         withShare: { type: 'boolean', description: 'incluir Share en el compose' },
@@ -59,13 +60,15 @@ export function registerProvisionTools(ctx: Context): void {
             skipped: { type: 'boolean' },
             hops: { type: 'number' },
             files: { type: 'array', items: { type: 'string' } },
+            stopped: { type: 'array', items: { type: 'string' } },
             executed: { type: 'boolean' },
           },
         },
         render: (_args, value) => {
-          const v = value as { mode: string; skipped: boolean; files: string[]; executed: boolean };
+          const v = value as { mode: string; skipped: boolean; files: string[]; stopped?: string[]; executed: boolean };
+          const stopped = v.stopped && v.stopped.length > 0 ? `\nparados: ${v.stopped.join(', ')}` : '';
           return text(
-            `modo=${v.mode} omitido=${v.skipped} ejecutado=${v.executed}\n${v.files.map((f) => `- ${f}`).join('\n')}`,
+            `modo=${v.mode} omitido=${v.skipped} ejecutado=${v.executed}${stopped}\n${v.files.map((f) => `- ${f}`).join('\n')}`,
           );
         },
       },
@@ -81,6 +84,8 @@ export function registerProvisionTools(ctx: Context): void {
         }
         const hops = requireSupportedUpgradePath(project.source.version, project.target.version);
         const workDir = `${stateDir()}/provision`;
+        // Al provisionar, para antes los stacks del destino (p. ej. un 26.2 que no toca) para liberar 8080.
+        const stopped = execute ? await stopRunningStacks(host) : [];
         const files: string[] = [];
         const memTotal = await dockerMemTotal(host);
         const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
@@ -93,7 +98,7 @@ export function registerProvisionTools(ctx: Context): void {
             files.push(await writeCompose(request, workDir));
           }
         }
-        return json({ mode, skipped: false, hops: files.length, files, executed: execute });
+        return json({ mode, skipped: false, hops: files.length, files, stopped, executed: execute });
       },
     }),
   );

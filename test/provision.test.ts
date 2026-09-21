@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderCompose, shouldSkipProvision } from '../src/domain/provision.js';
+import { renderCompose, shouldSkipProvision, stopTargets } from '../src/domain/provision.js';
 import { computeAlfrescoMemory, type MemoryData } from '../src/domain/memory.js';
 import { evaluateUpgradeLog, waitForUpgrade } from '../src/domain/schema-upgrade.js';
 
@@ -47,6 +47,21 @@ describe('compose', () => {
     expect(shouldSkipProvision('auto', true)).toBe(true);
     expect(shouldSkipProvision('auto', false)).toBe(false);
     expect(shouldSkipProvision('managed', true)).toBe(false);
+  });
+});
+
+describe('stopTargets (que stacks parar antes de provisionar)', () => {
+  it('con proyecto explicito, solo ese', () => {
+    expect(stopTargets(['alfresco-dst', 'otra'], 'alfresco-dst')).toEqual(['alfresco-dst']);
+  });
+
+  it('sin explicito, los que parezcan de Alfresco', () => {
+    expect(stopTargets(['alfresco-dst', 'web', 'alfresco-demo'])).toEqual(['alfresco-dst', 'alfresco-demo']);
+  });
+
+  it('sin coincidencias, solo si hay un unico proyecto', () => {
+    expect(stopTargets(['web'])).toEqual(['web']);
+    expect(stopTargets(['web', 'api'])).toEqual([]);
   });
 });
 

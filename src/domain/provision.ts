@@ -149,6 +149,29 @@ export async function destinationRunning(host: HostRef): Promise<boolean> {
   }
 }
 
+/**
+ * Proyectos docker compose a PARAR antes de levantar el stack del hop (para liberar puertos/recursos).
+ * Con `explicit` se para solo ese; si no, los que parezcan de Alfresco; si hay uno solo, ese.
+ */
+export function stopTargets(projects: string[], explicit?: string): string[] {
+  if (explicit && explicit.trim()) return [explicit.trim()];
+  const alfresco = projects.filter((p) => /alfresco/i.test(p));
+  if (alfresco.length > 0) return alfresco;
+  return projects.length === 1 ? projects : [];
+}
+
+/** Para (down) los stacks que ya corren en el DESTINO antes de provisionar el hop. */
+export async function stopRunningStacks(host: HostRef, env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
+  const listed = await runShell(host, 'docker compose ls -q');
+  const projects = listed.exitCode === 0 ? listed.stdout.split('\n').map((s) => s.trim()).filter(Boolean) : [];
+  const stopped: string[] = [];
+  for (const project of stopTargets(projects, env.MIGRATOR_DST_COMPOSE_PROJECT)) {
+    const result = await runShell(host, `docker compose -p "${project}" down --remove-orphans`);
+    if (result.exitCode === 0) stopped.push(project);
+  }
+  return stopped;
+}
+
 /** Escribe y levanta el stack del hop. */
 export async function provisionCompose(
   request: ComposeRequest,
