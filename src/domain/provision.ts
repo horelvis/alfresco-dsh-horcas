@@ -176,6 +176,15 @@ export async function stopRunningStacks(host: HostRef, env: NodeJS.ProcessEnv = 
   return stopped;
 }
 
+/**
+ * Valida el compose (parseo, sin tocar el daemon) con `docker compose -f - config -q`. Devuelve el error
+ * o `undefined` si es valido. Se usa ANTES de parar stacks para no dejarlos caidos por un compose invalido.
+ */
+export async function validateCompose(host: HostRef, content: string): Promise<string | undefined> {
+  const result = await runShellWithInput(host, 'docker compose -f - config -q', content);
+  return result.exitCode === 0 ? undefined : result.stderr.trim() || result.stdout.trim() || 'compose invalido';
+}
+
 /** Escribe y levanta el stack del hop. */
 export async function provisionCompose(
   request: ComposeRequest,

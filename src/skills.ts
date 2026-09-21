@@ -196,6 +196,9 @@ Basta con una de estas frases; NO pidas un prompt detallado.
 - **Antes de provisionar** (\`migrator_provision execute=true\`): pide al usuario la **carpeta del DESTINO**
   (\`dstDir\`, p.ej. \`/Users/horelvis/git/alfresco-dst-v2\`) si no está en \`MIGRATOR_DST_DIR\`. Ahi se montan el
   content store (\`<dstDir>/alf-data\`) y la BD (\`<dstDir>/pg-data\`) de la version.
+  El DESTINO se provisiona **por hop**: si aparece un stack previo (p.ej. un 26.2) **parado**, es
+  **intencionado** (el migrator lo para y levanta la version del hop). **NO lo restaures** ni propongas
+  \`docker compose up\` sobre el stack antiguo; provisiona la version del hop.
 
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.

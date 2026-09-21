@@ -14,7 +14,9 @@ import {
   provisionCompose,
   shouldSkipProvision,
   stopRunningStacks,
+  validateCompose,
   writeCompose,
+  renderCompose,
 } from '../domain/provision.js';
 import { stateDir } from '../domain/experience.js';
 import { computeAlfrescoMemory, type AlfrescoMemory } from '../domain/memory.js';
@@ -96,9 +98,19 @@ export function registerProvisionTools(ctx: Context): void {
         }
         const hops = requireSupportedUpgradePath(project.source.version, project.target.version);
         const workDir = `${stateDir()}/provision`;
-        // Al provisionar, para antes los stacks del destino (p. ej. un 26.2 que no toca) para liberar 8080.
-        const stopped = execute ? await stopRunningStacks(host) : [];
         const files: string[] = [];
+        // VALIDAR los composes ANTES de parar nada: un compose invalido no debe dejar el destino caido.
+        if (execute) {
+          for (const hop of hops) {
+            const invalid = await validateCompose(
+              host,
+              renderCompose(projectToComposeRequest(project, hop.to, args.withShare === true, undefined, dstDir)),
+            );
+            if (invalid) throw new Error(`Compose invalido para el hop ${hop.to}: ${invalid}`);
+          }
+        }
+        // Ya validado: para los stacks del destino (p. ej. un 26.2 que no toca) para liberar 8080.
+        const stopped = execute ? await stopRunningStacks(host) : [];
         const memTotal = await dockerMemTotal(host);
         const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;
         for (const hop of hops) {
