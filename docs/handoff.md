@@ -15,6 +15,13 @@ agente del plugin sobre el arnés fork.
 - Destino: `http://192.168.100.51:8080/alfresco` — ACS **26.2.0 CE** (`alfresco-dst`).
 - Backup existente: `.migrator/backup/` (dump BD + `contentstore/` ~1,9 GB + manifiesto SHA-256).
 
+## Modelo LLM (efectivo)
+- **Proveedor/modelo**: `deepseek-official` / **`deepseek-flash`** (nombre de catálogo **DeepSeek-V41-Flash**).
+- **Endpoint**: `https://opencode.ai/zen/go/v1` (opencode Go; `DEEPSEEK_BASE_URL`). `DEEPSEEK_API_KEY` desde `.env`.
+- Lo fija el bundle base (`agent-default-model`), NO `OPENAI_CHAT_OPTIONS_MODEL` del `.env` ni `DEEPSEEK_DEFAULT_MODEL`
+  (ese solo lo usa el plugin de búsqueda web). Si se quiere modelo local: sección `llm-pi-ai` en `~/.dsh/settings.yaml`
+  (`api: openai`, `baseURL` local) + override de `agent-default-model`.
+
 ## Cómo lanzar
 ```
 cd /Users/horelvis/git/gadex-migration
