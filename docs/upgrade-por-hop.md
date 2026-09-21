@@ -3,6 +3,24 @@
 **Alcance:** este migrador solo soporta ACS **7.x en adelante**. Las versiones previas (6.x y anteriores)
 usan otra arquitectura (p. ej. Tomcat antiguo) y quedan **fuera de alcance**.
 
+### Por qué 7.x+ y por qué 7.4 es obligatorio
+- **Corte de arquitectura (Tomcat/Java).** La línea moderna cambia de stack:
+  - 5.x/6.x: **Tomcat 8.5** y transformadores *legacy* **dentro del JVM** (retirados a partir de 6.2; en 7 ya
+    no existen), con la transformación movida a *T-Engines*/Transform Service.
+  - **7.0**: **Java 11 + Tomcat 9**.
+  - **25.3**: **Tomcat 10** → salto `javax.*` → `jakarta.*` (Jakarta EE 9): **cambio incompatible** que obliga a
+    recompilar la app.
+  - **26.2**: **Tomcat 11**, Java 21/25.
+  Este migrador asume la línea 7.x+; un origen 5.x/6.x exigiría otro modelo de despliegue y no está soportado.
+- **7.4 es la puerta.** Hyland solo soporta el salto **directo a 25.3+/26.x desde 7.4 o superior** (último
+  patch). Por eso la ruta es 7.1.0 → 7.4 → 25.3 → 26.2: **no se puede saltar 7.4**.
+
+Fuentes: Hyland *Supported Platforms* ([7.0](https://docs.alfresco.com/content-services/7.0/support/),
+[25.3](https://docs.hyland.com/r/Current/Alfresco-Supported-Platforms/olh1763030380749),
+[26.2](https://docs.hyland.com/r/Current/Alfresco-Supported-Platforms/gbr1783492480042)), Hyland
+*Upgrade paths* ([26.1](https://docs.hyland.com/r/Alfresco/Alfresco-Content-Services/26.1/Alfresco-Content-Services/Upgrade/Upgrade-Content-Services/Upgrade-paths)),
+Apache *Tomcat Migration Guide* ([10.0](https://tomcat.apache.org/migration-10.html)).
+
 Ruta obligatoria: **7.1.0 → 7.4 → 25.3 → 26.2** (no se salta de versión). En cada hop el DESTINO se sube a
 la versión del salto, reutilizando **el mismo content store y la misma BBDD** (copiados a un *directorio de
 versión*), y se deja que ACS aplique el **auto-update de esquema** al arrancar.
