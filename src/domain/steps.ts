@@ -15,6 +15,7 @@ import type { ProjectConfig } from '../domain/project-config.js';
 import { planContentCopy } from './content-copy.js';
 import { resolveContentStorePath } from './content-store.js';
 import { discoverRest } from './assessment.js';
+import { describeError } from '../infra/errors.js';
 
 export interface StepContext {
   project: ProjectConfig;
@@ -97,12 +98,29 @@ const backupSourceDb: StepDefinition = {
     if (ctx.dryRun) {
       return skipped('backup-source-db', `dry-run: dump a ${out}`);
     }
-    if (override) {
-      // El dump se escribe en un fichero de trabajo: asegura su directorio (fs del plugin, no sandbox).
-      await mkdir(path.dirname(out), { recursive: true });
-      return requireResult('backup-source-db', await runShell(ctx.source ?? { name: 'local' }, substitute(override, { out })));
+    if (!override) {
+      return skipped('backup-source-db', 'sin MIGRATOR_DB_DUMP_CMD (BD interna al contenedor)');
     }
-    return skipped('backup-source-db', 'sin MIGRATOR_DB_DUMP_CMD (BD interna al contenedor)');
+    // El dump se escribe primero en un fichero de trabajo local (fs del plugin, no sandbox).
+    await mkdir(path.dirname(out), { recursive: true });
+    const outcome = requireResult('backup-source-db', await runShell(ctx.source ?? { name: 'local' }, substitute(override, { out })));
+    if (!outcome.ok) return outcome;
+    // El directorio de VERSION del DESTINO guarda la copia de la BBDD: <dstDir>/db/<name>.dump
+    const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
+    if (dstDir && ctx.destination.name !== 'local') {
+      const remote = `${dstDir}/db/${ctx.project.target.database?.name ?? 'alfresco'}.dump`;
+      try {
+        const dump = await readFile(out, 'utf8');
+        const copy = await runShellWithInput(ctx.destination, `mkdir -p "${dstDir}/db" && cat > "${remote}"`, dump);
+        return ok(
+          'backup-source-db',
+          `dump ${out} · copia en el DESTINO ${remote}${copy.exitCode === 0 ? '' : ` (fallo la copia: ${copy.stderr.trim()})`}`,
+        );
+      } catch (error) {
+        return ok('backup-source-db', `dump ${out} (no se pudo copiar al destino: ${describeError(error)})`);
+      }
+    }
+    return outcome;
   },
 };
 
@@ -184,8 +202,21 @@ const restoreTargetDb: StepDefinition = {
     const db = ctx.project.target.database;
     const user = db?.user ?? 'alfresco';
     const name = db?.name ?? 'alfresco';
-    // El dump esta en el host de CONTROL: se envia por STDIN al `pg_restore` DENTRO del contenedor de
-    // Postgres del DESTINO (el host destino no tiene pg_restore en el PATH).
+    const container = process.env.MIGRATOR_DST_PG_CONTAINER ?? db?.container ?? `${ctx.project.project}-postgres-1`;
+    const password = process.env.MIGRATOR_DST_DB_PASSWORD ?? process.env.MIGRATOR_SRC_DB_PASSWORD;
+    const envFlag = password ? `-e PGPASSWORD='${password}' ` : '';
+    // 1) Si el dump ya esta en el DESTINO (directorio de version), se restaura desde ahi (docker exec < file).
+    const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
+    if (dstDir) {
+      const remote = `${dstDir}/db/${name}.dump`;
+      const probe = await runShell(ctx.destination, `test -s "${remote}"`);
+      if (probe.exitCode === 0) {
+        const command = `docker exec -i ${envFlag}${container} pg_restore -c --if-exists --no-owner -U ${user} -d ${name} < "${remote}"`;
+        const outcome = requireResult('restore-target-db', await runShell(ctx.destination, command));
+        return { ...outcome, command: undefined };
+      }
+    }
+    // 2) Si no, el dump esta en el host de CONTROL: se envia por STDIN al contenedor del DESTINO.
     let dump = '';
     try {
       dump = await readFile(inFile, 'utf8');
@@ -193,9 +224,6 @@ const restoreTargetDb: StepDefinition = {
       dump = '';
     }
     if (dump) {
-      const container = process.env.MIGRATOR_DST_PG_CONTAINER ?? db?.container ?? `${ctx.project.project}-postgres-1`;
-      const password = process.env.MIGRATOR_DST_DB_PASSWORD ?? process.env.MIGRATOR_SRC_DB_PASSWORD;
-      const envFlag = password ? `-e PGPASSWORD='${password}' ` : '';
       const command = `docker exec -i ${envFlag}${container} pg_restore -c --if-exists --no-owner -U ${user} -d ${name}`;
       const outcome = requireResult('restore-target-db', await runShellWithInput(ctx.destination, command, dump));
       return { ...outcome, command: undefined };
