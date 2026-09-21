@@ -67,6 +67,13 @@ describe('politica de seguridad', () => {
     ]);
   });
 
+  it('la aprobacion dice el ENTORNO real (ENSAYO vs PROD)', () => {
+    const test = decide({ name: 'migrator_run_steps', arguments: { steps: ['preflight-target'] } }, {}, 'Ejecuta pasos', 'test') as { details: string[] };
+    expect(test.details.join(' ')).toMatch(/ENSAYO \(stage=test/);
+    const prod = decide({ name: 'migrator_run_steps', arguments: { steps: ['preflight-target'] } }, {}, 'Ejecuta pasos', 'prod') as { details: string[] };
+    expect(prod.details.join(' ')).toMatch(/PRODUCCION/);
+  });
+
   it('el motivo es estructurado (title/details/body) reutilizando las descripciones', () => {
     const prov = writeReason(
       'migrator_provision',

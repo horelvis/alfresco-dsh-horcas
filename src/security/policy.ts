@@ -52,6 +52,8 @@ export const WRITE_TOOLS = ['migrator_target', 'migrator_run_steps', 'migrator_b
 const KNOWN = new Set<string>([...READ_ONLY_TOOLS, ...WRITE_TOOLS]);
 
 import { stepById } from '../domain/steps.js';
+import { loadProject } from '../domain/project-config.js';
+import { workspaceCwd } from '../infra/session.js';
 
 interface ToolExec {
   name: string;
@@ -165,11 +167,18 @@ export interface WriteReason {
  * Construye el motivo reutilizando la **descripcion de la propia tool** (registro del arnes) y, para
  * `run_steps`, la **descripcion de cada paso** del catalogo: sin textos hardcodeados.
  */
-export function writeReason(name: string, args: unknown, toolDescription?: string): WriteReason {
+export function writeReason(name: string, args: unknown, toolDescription?: string, stage?: string): WriteReason {
   const a = (args ?? {}) as Record<string, unknown>;
   const clean = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.]\s*$/, '');
   const title = toolDescription ? clean(toolDescription) : `La tool ${name} puede escribir en el DESTINO`;
   const details: string[] = [];
+  if (stage) {
+    details.push(
+      stage.toLowerCase() === 'prod'
+        ? 'Entorno: PRODUCCION (stage=prod; exige ensayo validado)'
+        : `Entorno: ENSAYO (stage=${stage}; NO exige ensayo validado)`,
+    );
+  }
   if (a.project) details.push(`Proyecto: ${String(a.project)}`);
   const dryRun = a.execute !== true;
   const mode = dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)';
@@ -192,7 +201,7 @@ export function writeReason(name: string, args: unknown, toolDescription?: strin
 }
 
 /** Decide la politica de una llamada del migrador (exportada para tests). */
-export function decide(exec: ToolExec, options: PolicyOptions = {}, toolDescription?: string): Decision {
+export function decide(exec: ToolExec, options: PolicyOptions = {}, toolDescription?: string, stage?: string): Decision {
   const name = exec.name;
   if (name.startsWith('migrator_')) {
     if (!KNOWN.has(name)) {
@@ -205,7 +214,7 @@ export function decide(exec: ToolExec, options: PolicyOptions = {}, toolDescript
           reason: `Modo solo-lectura: '${name}' escribe en el DESTINO. Activa MIGRATOR_MODE=write para permitirlo.`,
         };
       }
-      const prompt = writeReason(name, exec.arguments, toolDescription);
+      const prompt = writeReason(name, exec.arguments, toolDescription, stage);
       return {
         kind: 'ask',
         reason: prompt.reason,
@@ -254,11 +263,21 @@ export function guardReason(exec: ToolExec): string | undefined {
   return undefined;
 }
 
+/** Stage del proyecto del workspace (para que la aprobacion diga ENSAYO vs PROD). `undefined` si no hay. */
+async function projectStage(exec: ToolExec): Promise<string | undefined> {
+  try {
+    return (await loadProject(undefined, workspaceCwd(exec))).stage;
+  } catch {
+    return undefined;
+  }
+}
+
 export function installSecurity(ctx: SecurityContext, options: PolicyOptions = policyOptionsFromEnv()): void {
   ctx.on('tools/pre-execute', async (exec, next) => {
     // Reutilizamos la descripcion registrada de la tool (sin hardcodear el motivo).
     const description = ctx.tools.get?.(exec.name, exec.agent)?.description;
-    const decision = decide(exec, options, description);
+    const stage = isWrite(exec.name) ? await projectStage(exec) : undefined;
+    const decision = decide(exec, options, description, stage);
     return decision.kind === 'allow' ? ((await next()) as Decision) : decision;
   });
   ctx.tools.guard(guardReason);
