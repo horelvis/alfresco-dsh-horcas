@@ -36,6 +36,12 @@ export interface ComposeRequest {
   acsImage?: string;
 }
 
+/** `true` si el tag de la imagen es PRE-RELEASE (Alpha/Beta/RC/SNAPSHOT/M): no usar en migracion. */
+export function isPrereleaseImage(image: string): boolean {
+  const tag = image.includes(':') ? image.slice(image.lastIndexOf(':') + 1) : '';
+  return /(^|[-._])(a\d+|alpha|beta|rc\d*|snapshot|m\d+|milestone|preview|dev|nightly)/i.test(tag);
+}
+
 const POSTGRES_IMAGE = 'postgres:15';
 // Los tags de ActiveMQ NO son "genericos": en el registro solo existen los -jre17-rockylinux8.
 const ACTIVEMQ_5 = 'alfresco/alfresco-activemq:5.18.7-jre17-rockylinux8';
@@ -209,6 +215,20 @@ export async function stopRunningStacks(host: HostRef, env: NodeJS.ProcessEnv = 
 export async function validateCompose(host: HostRef, content: string): Promise<string | undefined> {
   const result = await runShellWithInput(host, 'docker compose -f - config -q', content);
   return result.exitCode === 0 ? undefined : result.stderr.trim() || result.stdout.trim() || 'compose invalido';
+}
+
+/** Registro de una imagen (host) cuando no es Docker Hub (p.ej. `quay.io`); `undefined` si es Docker Hub. */
+export function imageRegistry(image: string): string | undefined {
+  const first = image.split('/')[0] ?? '';
+  return first.includes('.') || first.includes(':') ? first : undefined;
+}
+
+/** Login en el registro del DESTINO (EE/quay.io). El password va por STDIN (no se expone ni en el comando). */
+export async function registryLogin(host: HostRef, registry: string, user: string, password: string): Promise<void> {
+  const result = await runShellWithInput(host, `docker login ${registry} -u '${user}' --password-stdin`, password);
+  if (result.exitCode !== 0) {
+    throw new Error(`docker login ${registry} fallido: ${result.stderr.trim() || result.stdout.trim()}`);
+  }
 }
 
 /** Crea (en el DESTINO) las carpetas de datos de la version antes de montarlas. */

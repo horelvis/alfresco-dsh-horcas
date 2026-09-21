@@ -17,6 +17,9 @@ import {
   ensureDataDirs,
   ensureStackSecrets,
   globalProperties,
+  imageRegistry,
+  isPrereleaseImage,
+  registryLogin,
   manualCommands,
   writeStackConfig,
   shouldSkipProvision,
@@ -111,6 +114,24 @@ export function registerProvisionTools(ctx: Context): void {
         const execute = args.execute === true && mode !== 'manual';
         if (execute) requireDistinctTarget(project);
         // Hecho del proyecto (YAML) primero; el parametro/entorno solo lo sobrescriben.
+        // Pre-release (Alpha/Beta/RC/SNAPSHOT) NO se usa en migracion: hay que ir a la GA.
+        if (project.target.acsImage && isPrereleaseImage(project.target.acsImage)) {
+          throw new Error(
+            `Imagen PRE-RELEASE no permitida: ${project.target.acsImage}. Usa la GA (p.ej. ...community:7.4.2).`,
+          );
+        }
+        // Registro con autenticacion (EE/quay.io): login en el DESTINO con las credenciales del entorno.
+        const registry = imageRegistry(project.target.acsImage ?? '') ?? (project.target.edition === 'EE' ? 'quay.io' : undefined);
+        if (execute && registry) {
+          const user = process.env.MIGRATOR_REGISTRY_USER ?? process.env.MIGRATOR_EE_USER;
+          const password = process.env.MIGRATOR_REGISTRY_PASSWORD ?? process.env.MIGRATOR_EE_PASSWORD;
+          if (!user || !password) {
+            throw new Error(
+              `La imagen usa el registro ${registry} y requiere credenciales: define MIGRATOR_REGISTRY_USER y MIGRATOR_REGISTRY_PASSWORD.`,
+            );
+          }
+          await registryLogin(host, registry, user, password);
+        }
         const dstDir = args.dstDir ?? project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
         const pgBind = ['true', '1', 'yes', 'on'].includes((process.env.MIGRATOR_DST_PG_BIND ?? '').toLowerCase());
         if (execute && !dstDir) {

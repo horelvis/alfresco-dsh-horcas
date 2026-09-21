@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   ensureStackSecrets,
   globalProperties,
+  isPrereleaseImage,
   manualCommands,
   renderCompose,
   shouldSkipProvision,
@@ -102,6 +103,16 @@ describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
       commands.some((c) => c.includes('--env-file /tmp/demo.env') && c.includes('-f /tmp/docker-compose-26.2.yml up -d')),
     ).toBe(true);
     expect(commands.join(' ')).not.toMatch(/POSTGRES_PASSWORD=/);
+  });
+});
+
+describe('isPrereleaseImage', () => {
+  it('detecta pre-release y acepta GA', () => {
+    expect(isPrereleaseImage('alfresco/alfresco-content-repository-community:7.4.2.5-A1')).toBe(true);
+    expect(isPrereleaseImage('alfresco/alfresco-content-repository-community:26.2.0-RC1')).toBe(true);
+    expect(isPrereleaseImage('repo:1.0-SNAPSHOT')).toBe(true);
+    expect(isPrereleaseImage('alfresco/alfresco-content-repository-community:7.4.2')).toBe(false);
+    expect(isPrereleaseImage('alfresco/alfresco-content-repository-community:26.2.0')).toBe(false);
   });
 });
 
