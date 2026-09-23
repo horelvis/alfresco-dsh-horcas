@@ -23,6 +23,10 @@ import {
   missingImages,
   registryLogin,
   manualCommands,
+  manualCommandsForFile,
+  validateRemoteCompose,
+  downExternalCompose,
+  upExternalInfra,
   writeStackConfig,
   shouldSkipProvision,
   slug,
@@ -62,7 +66,7 @@ export function registerProvisionTools(ctx: Context): void {
     defineTool({
       name: 'migrator_provision',
       description:
-        'Provisiona el DESTINO en Docker Compose por hop: valida el compose, para los stacks que no tocan y levanta docker-compose-<hop>.yml. SIEMPRE devuelve los comandos manuales (copiar y ejecutar en el destino, con sudo) por si no hay SSH. Modos: MIGRATOR_DST_PROVISION=auto|managed|external|manual; proyecto a parar: MIGRATOR_DST_COMPOSE_PROJECT.',
+        'Provisiona el DESTINO en Docker Compose por hop: valida el compose, para los stacks que no tocan y levanta docker-compose-<hop>.yml. SIEMPRE devuelve los comandos manuales (copiar y ejecutar en el destino, con sudo) por si no hay SSH. Si el YAML define target.composeFile (ruta EN EL HOST DESTINO), usa ESE compose tal cual y NO genera ni escribe ninguno (no toca tu despliegue). Modos: MIGRATOR_DST_PROVISION=auto|managed|external|manual; proyecto a parar: MIGRATOR_DST_COMPOSE_PROJECT.',
       parameters: {
         execute: { type: 'boolean', description: 'false = solo generar los compose (por defecto)' },
         withShare: { type: 'boolean', description: 'incluir Share en el compose' },
@@ -113,6 +117,8 @@ export function registerProvisionTools(ctx: Context): void {
         const project = await loadProject(undefined, workspaceCwd(exec));
         const mode = (process.env.MIGRATOR_DST_PROVISION ?? 'auto').toLowerCase();
         const host = destinationHost(project);
+        // Compose del OPERADOR (EN EL DESTINO, otra maquina): si esta definido, manda el suyo.
+        const composeFile = project.target.composeFile;
         const execute = args.execute === true && mode !== 'manual';
         if (execute) requireDistinctTarget(project);
         // Hecho del proyecto (YAML) primero; el parametro/entorno solo lo sobrescriben.
@@ -123,8 +129,9 @@ export function registerProvisionTools(ctx: Context): void {
           );
         }
         // Registro con autenticacion (EE/quay.io): login en el DESTINO con las credenciales del entorno.
+        // Con un compose del operador el despliegue es suyo: no se fuerza login ni credenciales.
         const registry = imageRegistry(project.target.acsImage ?? '') ?? (project.target.edition === 'EE' ? 'quay.io' : undefined);
-        if (execute && registry) {
+        if (execute && registry && !composeFile) {
           const user = process.env.MIGRATOR_REGISTRY_USER ?? process.env.MIGRATOR_EE_USER;
           const password = process.env.MIGRATOR_REGISTRY_PASSWORD ?? process.env.MIGRATOR_EE_PASSWORD;
           if (!user || !password) {
@@ -136,7 +143,8 @@ export function registerProvisionTools(ctx: Context): void {
         }
         const dstDir = args.dstDir ?? project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
         const pgBind = ['true', '1', 'yes', 'on'].includes((process.env.MIGRATOR_DST_PG_BIND ?? '').toLowerCase());
-        if (execute && !dstDir) {
+        // Con compose del operador no se montan datos: su despliegue ya define volumenes/binds.
+        if (execute && !dstDir && !composeFile) {
           throw new Error(
             'Falta la carpeta del DESTINO (EN EL HOST DESTINO, por SSH): pasa dstDir o define MIGRATOR_DST_DIR. ' +
               'El content store y la BD de la version se montan ahi (<dstDir>/alf-data y <dstDir>/pg-data).',
@@ -147,6 +155,25 @@ export function registerProvisionTools(ctx: Context): void {
           return json({ mode, skipped: true, hops: 0, files: [], stopped: [], manual: [], executed: false });
         }
         const hops = requireSupportedUpgradePath(project.source.version, project.target.version);
+
+        // COMPOSE DEL OPERADOR (`target.composeFile`): vive en el DESTINO y se usa TAL CUAL. El migrator
+        // NO genera ni escribe ningun compose (no toca su despliegue); solo valida, para su stack y
+        // levanta la infraestructura. Alfresco se arranca despues del restore (paso `schema-upgrade`).
+        if (composeFile) {
+          const manual = [{ hop: hops[hops.length - 1]!.to, commands: manualCommandsForFile(composeFile) }];
+          if (!execute) {
+            return json({ mode, skipped: false, hops: 0, files: [composeFile], stopped: [], manual, executed: false });
+          }
+          const invalid = await validateRemoteCompose(host, composeFile);
+          if (invalid) throw new Error(`Compose del DESTINO invalido (${composeFile}): ${invalid}`);
+          const stopped = (await downExternalCompose(host, composeFile)) ? [composeFile] : [];
+          try {
+            await upExternalInfra(host, composeFile);
+          } catch (error) {
+            return json({ mode, skipped: false, hops: 1, files: [composeFile], stopped, manual, executed: false, error: describeError(error) });
+          }
+          return json({ mode, skipped: false, hops: 1, files: [composeFile], stopped, manual, executed: true });
+        }
         const workDir = `${stateDir()}/provision`;
         const memTotal = await dockerMemTotal(host);
         const memory: AlfrescoMemory | undefined = memTotal ? computeAlfrescoMemory(memTotal) : undefined;

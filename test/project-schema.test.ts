@@ -10,4 +10,19 @@ describe('project.schema', () => {
     const errors = await validateProject(yaml.load(text));
     expect(errors).toEqual([]);
   });
+
+  it('acepta target.composeFile (compose validado en el DESTINO)', async () => {
+    const errors = await validateProject({
+      project: 'demo',
+      source: { baseUrl: 'http://localhost/alfresco', version: '7.1.0', database: { engine: 'postgresql' }, contentStore: { type: 'FS' } },
+      target: {
+        version: '26.2',
+        database: { engine: 'postgresql' },
+        contentStore: { type: 'FS' },
+        search: { engine: 'opensearch' },
+        composeFile: '/home/op/infra/alfresco/docker-compose.yml',
+      },
+    });
+    expect(errors).toEqual([]);
+  });
 });

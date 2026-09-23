@@ -202,6 +202,9 @@ Basta con una de estas frases; NO pidas un prompt detallado.
   \`docker compose up\` sobre el stack antiguo; provisiona la version del hop.
   Si **no hay SSH** o hace falta **sudo**, la tool ya devuelve \`manual\` con los comandos listos para
   **copiar y ejecutar en el destino** (compose en base64 + \`docker compose ... up -d\`): ofréceselos al usuario.
+  **Excepcion**: si el YAML define \`target.composeFile\` (ruta **EN EL HOST DESTINO**), el migrator **usa ese
+  compose tal cual** y **NO genera ni escribe ninguno**: no pidas \`dstDir\` ni propongas un compose nuevo, y no
+  restaures ni reescribas el fichero del operador. Solo valida, para su stack y levanta la infraestructura.
 
 Anota los HITOS con \`migrator_journal\` (assessment, estrategia, plan, decisiones, bloqueos, aprobaciones):
 es lo que permite que **otro chat** continúe sin repetir el trabajo.

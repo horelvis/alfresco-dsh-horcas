@@ -165,6 +165,12 @@ LLM falla o responde algo no parseable, el veredicto es **`ABSTAIN`** (nunca un 
 ### 10. Secretos
 El compose generado no embebe secretos (variables de entorno); `.env` está en `.gitignore`.
 
+**Compose propio del operador**: si el YAML define `target.composeFile` (ruta **en el host destino**, otra
+máquina), el migrator **usa ese compose tal cual** (`docker compose -f <fichero>`) y **no genera ni escribe
+ninguno**: valida, para su stack y levanta solo la infraestructura (`postgres activemq search`); Alfresco se
+arranca tras el restore (`schema-upgrade`). Se respeta el nombre de proyecto del propio compose (sin `-p`),
+así que nunca renombra ni toca tu despliegue. Servicios esperados: `postgres`/`activemq`/`search` y `alfresco`.
+
 ### 11. Recuperación tras interrupción
 Si una llamada a tool se interrumpe (parada del turno, cierre/reinicio del servidor web), el arnés la
 marca como *"outcome unknown"* y no cierra el turno. Para nuestras tools:

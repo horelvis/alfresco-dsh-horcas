@@ -271,11 +271,18 @@ const schemaUpgrade: StepDefinition = {
         )
       : undefined;
     const minor = (detected?.version ?? ctx.project.target.version).split('.').slice(0, 2).join('.');
-    const file = process.env.MIGRATOR_DST_COMPOSE_FILE ?? (dstDir ? `${dstDir}/compose/docker-compose-${minor}.yml` : undefined);
+    // Compose del OPERADOR (`target.composeFile`, EN EL DESTINO): se usa tal cual, sin `-p` (se respeta
+    // el nombre de proyecto del propio compose).
+    const external = !process.env.MIGRATOR_DST_COMPOSE_FILE && !!ctx.project.target.composeFile;
+    const file =
+      process.env.MIGRATOR_DST_COMPOSE_FILE ??
+      ctx.project.target.composeFile ??
+      (dstDir ? `${dstDir}/compose/docker-compose-${minor}.yml` : undefined);
     if (!file) {
-      return skipped('schema-upgrade', 'sin compose del hop: define MIGRATOR_DST_COMPOSE_FILE o target.dataDir');
+      return skipped('schema-upgrade', 'sin compose del hop: define target.composeFile, MIGRATOR_DST_COMPOSE_FILE o target.dataDir');
     }
-    const up = await runShell(ctx.destination, `docker compose -f "${file}" -p "${project}" up -d alfresco`);
+    const projectArg = external && !process.env.MIGRATOR_DST_COMPOSE_PROJECT ? '' : ` -p "${project}"`;
+    const up = await runShell(ctx.destination, `docker compose -f "${file}"${projectArg} up -d alfresco`);
     if (up.exitCode !== 0) {
       return fail('schema-upgrade', up.stderr.trim() || 'no se pudo arrancar el servicio alfresco');
     }

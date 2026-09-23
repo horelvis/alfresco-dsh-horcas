@@ -39,6 +39,10 @@ target:
   deployment: compose
   # URL REST del DESTINO (verificacion de version del hop / salud). Override: MIGRATOR_DST_BASE_URL.
   baseUrl: http://192.168.100.51:8080/alfresco
+  # Compose YA VALIDADO que vive EN EL HOST DESTINO (otra maquina). Si se define, el migrator lo usa
+  # tal cual (`docker compose -f <fichero>`) y NO genera ni escribe el suyo (no toca tu despliegue).
+  # Servicios esperados: postgres/activemq/search (infra) y alfresco (repo). Ejemplo:
+  # composeFile: /home/horelvis/infra/alfresco/docker-compose.yml
   database:
     engine: postgresql
   contentStore:

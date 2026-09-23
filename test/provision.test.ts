@@ -9,6 +9,7 @@ import {
   globalProperties,
   isPrereleaseImage,
   manualCommands,
+  manualCommandsForFile,
   renderCompose,
   shouldSkipProvision,
   stopTargets,
@@ -105,6 +106,18 @@ describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
       commands.some((c) => c.includes('--env-file /tmp/demo.env') && c.includes('-f /tmp/docker-compose-26.2.yml up -d')),
     ).toBe(true);
     expect(commands.join(' ')).not.toMatch(/POSTGRES_PASSWORD=/);
+  });
+});
+
+describe('manualCommandsForFile (compose del operador, sin generar ni copiar)', () => {
+  it('usa el fichero tal cual y levanta solo la infra, sin -p ni base64', () => {
+    const commands = manualCommandsForFile('/home/op/infra/alfresco/docker-compose.yml');
+    expect(commands).toEqual([
+      'sudo docker compose -f "/home/op/infra/alfresco/docker-compose.yml" down --remove-orphans',
+      'sudo docker compose -f "/home/op/infra/alfresco/docker-compose.yml" up -d postgres activemq search',
+    ]);
+    expect(commands.join(' ')).not.toContain('base64');
+    expect(commands.join(' ')).not.toContain(' -p ');
   });
 });
 

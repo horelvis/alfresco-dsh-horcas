@@ -33,4 +33,11 @@ describe('loadProject', () => {
     expect(project.stage).toBe('clone');
     expect(project.target.contentStore?.volume).toBe('v');
   });
+
+  it('parsea target.composeFile (compose validado EN EL DESTINO)', () => {
+    const project = parseProjectYaml(
+      'project: demo\nsource:\n  version: "7.1.0"\ntarget:\n  version: "26.2"\n  composeFile: /home/op/infra/alfresco/docker-compose.yml\n',
+    );
+    expect(project.target.composeFile).toBe('/home/op/infra/alfresco/docker-compose.yml');
+  });
 });

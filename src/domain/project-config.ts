@@ -46,6 +46,12 @@ export interface ProjectConfig {
     dataDir?: string;
     /** Imagen EXACTA del repositorio en el DESTINO (p.ej. alfresco/alfresco-content-repository-community:7.4.2). */
     acsImage?: string;
+    /**
+     * Ruta (EN EL HOST DESTINO, otra maquina) de un compose YA VALIDADO por el operador. Si se define,
+     * el migrator lo USA tal cual (`docker compose -f <file>`) y NO genera ni escribe el suyo: nunca
+     * toca el despliegue del operador.
+     */
+    composeFile?: string;
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; volume?: string };
     search?: { engine?: string };
@@ -98,6 +104,7 @@ export function parseProjectYaml(text: string): ProjectConfig {
       baseUrl: target.baseUrl ? String(target.baseUrl) : undefined,
       dataDir: target.dataDir ? String(target.dataDir) : undefined,
       acsImage: target.acsImage ? String(target.acsImage) : undefined,
+      composeFile: target.composeFile ? String(target.composeFile) : undefined,
       database: target.database as ProjectDatabase | undefined,
       contentStore: target.contentStore as ProjectConfig['target']['contentStore'],
       search: target.search as ProjectConfig['target']['search'],

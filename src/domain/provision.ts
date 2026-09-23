@@ -327,6 +327,39 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
 }
 
 /**
+ * Comandos manuales para un compose EXISTENTE en el DESTINO (aportado por el operador con
+ * `target.composeFile`): no se genera ni copia nada; se usa el fichero tal cual. Sin `-p` para respetar
+ * el nombre de proyecto del propio compose (su `name:` o el directorio), sin tocar otros stacks.
+ */
+export function manualCommandsForFile(composeFile: string): string[] {
+  return [
+    `sudo docker compose -f "${composeFile}" down --remove-orphans`,
+    `sudo docker compose -f "${composeFile}" up -d ${INFRA_SERVICES}`,
+  ];
+}
+
+/** Valida un compose EXISTENTE en el DESTINO (sin generarlo): `docker compose -f <file> config -q`. */
+export async function validateRemoteCompose(host: HostRef, file: string): Promise<string | undefined> {
+  const result = await runShell(host, `docker compose -f "${file}" config -q`);
+  return result.exitCode === 0 ? undefined : result.stderr.trim() || result.stdout.trim() || 'compose invalido';
+}
+
+/** Para (down) el stack del compose EXISTENTE en el DESTINO (respeta su nombre de proyecto). */
+export async function downExternalCompose(host: HostRef, file: string): Promise<boolean> {
+  const result = await runShell(host, `docker compose -f "${file}" down --remove-orphans`);
+  return result.exitCode === 0;
+}
+
+/** Levanta SOLO la infraestructura del compose EXISTENTE (Alfresco se arranca tras el restore). */
+export async function upExternalInfra(host: HostRef, file: string): Promise<string> {
+  const result = await runShell(host, `docker compose -f "${file}" up -d ${INFRA_SERVICES}`);
+  if (result.exitCode !== 0) {
+    throw new Error(`docker compose up (infra, compose del operador) fallido (exit=${result.exitCode}): ${result.stderr}`);
+  }
+  return result.stdout.trim();
+}
+
+/**
  * Nombre de proyecto docker compose VALIDO: solo `[a-z0-9_-]` (los puntos de `gadex-7.1.0` NO valen).
  */
 export const composeProjectName = (name: string): string => {
