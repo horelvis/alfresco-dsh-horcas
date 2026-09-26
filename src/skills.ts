@@ -244,6 +244,10 @@ modelos.
 **Documento de migracion:** al cerrar (o ante un bloqueo) ejecuta \`migrator_report\`: deja en el workspace el
 informe con ejecucion, tiempos estimado vs real, checklist con evidencia, decisiones, rollback y pendientes.
 
+**Ante un paso que falla, NO cambies la composicion para esquivarlo** (p.ej. quitar \`provision-hop\` del primer
+hop): diagnostica, explica la causa y espera. **Nunca modifiques, recompiles ni reinicies el plugin del migrador
+ni el arnes** (estan protegidos): si el fallo es del plugin, avisa al humano para que lo corrija y reinicie.
+
 **Para VER el estado real del destino usa \`migrator_target_state\`** (contenedores, directorio de version, content
 store, pg-data, version REST), no \`ssh\`/\`docker\` a mano.
 

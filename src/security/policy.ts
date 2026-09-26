@@ -262,6 +262,7 @@ export function policyOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Poli
 }
 
 const SHELL_TOOLS = new Set(['bash', 'pwsh', 'shell', 'exec']);
+const FILE_WRITE_TOOLS = new Set(['write', 'edit', 'multi_edit', 'apply_patch']);
 // docker que MUTA (contenedores, volumenes, imagenes); `ps`/`logs`/`inspect`/`config`/`images` siguen permitidos.
 const DOCKER_MUTATION =
   /\bdocker(?:\s+compose\b[^|;&]*?)?\s+(?:up|down|rm|rmi|restart|stop|start|kill|create|run|exec|cp|pull|update|prune|volume\s+(?:rm|prune|create)|network\s+(?:rm|prune|create)|system\s+prune)\b/;
@@ -273,7 +274,31 @@ const REMOTE_FILE_MUTATION = /\b(?:rm|mv|cp|chown|chmod|mkdir|tee|truncate|dd|ke
  * esas escrituras solo pueden ir por las tools del migrator (aprobacion, checkpoints, guardas). El
  * diagnostico en solo lectura (logs, ps, inspect, cat, curl) sigue permitido.
  */
+/**
+ * AUTOPROTECCION: carpetas del propio plugin y del arnes. El agente puede LEERLAS, pero nunca escribir,
+ * compilar ni hacer git con efectos en ellas: si pudiera, cambiaria las guardas que lo limitan (cambiar el
+ * plugin es trabajo del desarrollador). Se reconocen por su nombre de carpeta (sirve con symlinks/~).
+ */
+export const PROTECTED_DIRS = ['dsh-alfresco-migrator', 'deepseek-harness', 'alfresco-dsh-horcas'];
+const protectedPath = new RegExp(`(^|[\\s"'=:(/~])[^\\s"']*/(${PROTECTED_DIRS.join('|')})(/|["'\\s]|$)`);
+const SELF_WRITE =
+  /\b(?:npm|pnpm|yarn|npx|tsc|tsdown|node\s+\S*build|rm|mv|cp|rsync|chmod|chown|tee|truncate|touch|ln|mkdir|install)\b|\bsed\s+-i\b|\bgit(?:\s+-[Cc]\s+\S+)*\s+(?:commit|checkout|reset|restore|stash|rebase|merge|pull|push|apply|am|clean|switch)\b|[^0-9&]>\s*(?!\/dev\/null|&)/;
+
+/** Motivo de bloqueo si el comando modifica el plugin o el arnes (autoproteccion). */
+export function selfModificationReason(command: string): string | undefined {
+  if (!protectedPath.test(command)) return undefined;
+  if (!SELF_WRITE.test(command)) return undefined;
+  return 'Autoproteccion: el agente no puede modificar, compilar ni versionar el plugin del migrador ni el arnes (solo leerlos). Si hace falta un cambio o un reinicio, para y avisa al humano.';
+}
+
+/** Ruta de fichero (tools write/edit) dentro del plugin o del arnes. */
+export function protectedFileReason(file: string): string | undefined {
+  return PROTECTED_DIRS.some((d) => file.includes(`/${d}/`)) ? selfModificationReason(`touch ${file}`) : undefined;
+}
+
 export function shellMutationReason(command: string): string | undefined {
+  const self = selfModificationReason(command);
+  if (self) return self;
   const remote = /\b(?:ssh|scp)\b/.test(command);
   if (DOCKER_MUTATION.test(command)) {
     return `Operacion Docker que modifica ${remote ? 'el DESTINO' : 'un stack (el ORIGEN es inmutable)'} por shell: usa migrator_run_steps / migrator_provision`;
@@ -286,6 +311,11 @@ export function shellMutationReason(command: string): string | undefined {
 
 /** Guard monotono: bloquea escritura que apunte al origen (inmutable) y cambios por shell fuera del migrator. */
 export function guardReason(exec: ToolExec): string | undefined {
+  if (FILE_WRITE_TOOLS.has(exec.name)) {
+    const args = exec.arguments as { file_path?: unknown; path?: unknown } | undefined;
+    const file = typeof args?.file_path === 'string' ? args.file_path : typeof args?.path === 'string' ? args.path : '';
+    return file ? protectedFileReason(file) : undefined;
+  }
   if (SHELL_TOOLS.has(exec.name)) {
     const args = exec.arguments as { command?: unknown; script?: unknown } | undefined;
     const command = typeof args?.command === 'string' ? args.command : typeof args?.script === 'string' ? args.script : '';
@@ -311,7 +341,7 @@ async function projectStage(exec: ToolExec): Promise<string | undefined> {
 export function installSecurity(ctx: SecurityContext, options: PolicyOptions = policyOptionsFromEnv()): void {
   ctx.on('tools/pre-execute', async (exec, next) => {
     // Cambios del DESTINO/stacks por shell: denegados siempre (tambien si el guard del registro no ve bash).
-    const shell = SHELL_TOOLS.has(exec.name) ? guardReason(exec) : undefined;
+    const shell = SHELL_TOOLS.has(exec.name) || FILE_WRITE_TOOLS.has(exec.name) ? guardReason(exec) : undefined;
     if (shell) return { kind: 'deny', reason: shell };
     // Reutilizamos la descripcion registrada de la tool (sin hardcodear el motivo).
     const description = ctx.tools.get?.(exec.name, exec.agent)?.description;
