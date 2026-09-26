@@ -9,7 +9,8 @@ import { loadProject } from '../domain/project-config.js';
 import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { recommendStrategy, type StrategyInput } from '../domain/strategy.js';
 import { estimate, type EstimationInput } from '../domain/estimator.js';
-import { buildChecklist, renderChecklistMarkdown, type ChecklistInput } from '../domain/checklist.js';
+import { applyEvidence, buildChecklist, renderChecklistMarkdown, type ChecklistInput } from '../domain/checklist.js';
+import { checklistFacts, recordEvidence } from '../domain/evidence.js';
 import { epic, issue, writeCsv, type JiraRow } from '../domain/jira.js';
 import { connectSource, queryRows, sourceDbConfigFromEnv } from '../infra/pg.js';
 import { stateDir } from '../domain/experience.js';
@@ -42,6 +43,13 @@ function strategyInput(
   };
 }
 
+/** Ventana de corte: argumento de la tool o `estimation.cutoverWindowHours` del YAML. */
+export function windowHours(arg: number | undefined, raw: Record<string, unknown>): { windowHours?: number } {
+  const fromYaml = Number((raw.estimation as Record<string, unknown> | undefined)?.cutoverWindowHours);
+  const value = arg ?? (Number.isFinite(fromYaml) ? fromYaml : undefined);
+  return value !== undefined && value > 0 ? { windowHours: value } : {};
+}
+
 export function registerPlanningTools(ctx: Context): void {
   ctx.tools.register(
     defineTool({
@@ -68,18 +76,22 @@ export function registerPlanningTools(ctx: Context): void {
     defineTool({
       name: 'migrator_estimate',
       timeoutMs: 300_000,
-      description: 'Estima la ventana de migracion por fases (assessment/pre-staging/cutover/post), cuello y riesgos.',
+      description:
+        'Estima la ventana de migracion por fases (assessment/pre-staging/cutover/post), cuello y riesgos, y la POLITICA DE REINDEX segun tamaño y ventana de corte (online tras el corte / metadatos primero / pre-indexado + delta) con los pasos concretos del motor destino.',
       parameters: {
         changeRatePerDay: { type: 'number', description: 'Tasa de cambio diaria (defecto 0.01)' },
         parallelism: { type: 'number', description: 'Paralelismo (defecto 1)' },
+        cutoverWindowHours: { type: 'number', description: 'Ventana de corte de PROD en horas (defecto estimation.cutoverWindowHours del YAML)' },
       },
       output: {
         schema: { type: 'object', additionalProperties: true },
         render: (_args, value) => {
-          const v = value as { cutoverMinutes: number; totalMinutes: number; bottleneck: string; confidence: string; risks: string[] };
+          const v = value as { cutoverMinutes: number; totalMinutes: number; bottleneck: string; confidence: string; risks: string[]; reindexPlan?: { policy: string; family: string; rationale: string; steps: string[] } };
+          const r = v.reindexPlan;
           return text(
             `cutover=${v.cutoverMinutes}min total=${v.totalMinutes}min cuello=${v.bottleneck} confianza=${v.confidence}` +
-              (v.risks.length ? `\nRiesgos: ${v.risks.join('; ')}` : ''),
+              (v.risks.length ? `\nRiesgos: ${v.risks.join('; ')}` : '') +
+              (r ? `\nReindex: ${r.policy} (${r.family}) — ${r.rationale}\n${r.steps.map((s) => `  - ${s}`).join('\n')}` : ''),
           );
         },
       },
@@ -96,8 +108,16 @@ export function registerPlanningTools(ctx: Context): void {
           requiresValidationHops: hops.filter((h) => h.pathClass === 'REQUIRES_VALIDATION').length,
           parallelism: args.parallelism ?? 1,
           changeRatePerDay: args.changeRatePerDay ?? 0.01,
+          reindex: {
+            engine: project.target.search?.engine ?? 'solr',
+            edition: project.target.edition ?? 'CE',
+            targetVersion: project.target.version,
+            ...windowHours(args.cutoverWindowHours, project.raw),
+          },
         };
-        return json(estimate(input));
+        const result = estimate(input);
+        await recordEvidence(stateDir(), project.project, 'estimate', 'OK', `estimacion calculada (${hops.length} hops)`);
+        return json(result);
       },
     }),
   );
@@ -130,7 +150,8 @@ export function registerPlanningTools(ctx: Context): void {
           targetSearch: project.target.search?.engine ?? 'solr',
           hops: hops.map((h) => ({ from: h.from, to: h.to, pathClass: h.pathClass })),
         };
-        const items = buildChecklist(input);
+        // Estado resuelto con la EVIDENCIA durable (chequeos, checkpoints, hops): sin prueba sigue PENDING.
+        const items = applyEvidence(buildChecklist(input), await checklistFacts(stateDir(), project.project, hops));
         return json({ items: items.length, markdown: renderChecklistMarkdown(project.project, items), checklist: items });
       },
     }),

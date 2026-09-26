@@ -16,6 +16,38 @@ import { planContentCopy } from './content-copy.js';
 import { resolveContentStorePath } from './content-store.js';
 import { discoverRest } from './assessment.js';
 import { sameMinor } from './hops.js';
+import { requireSupportedUpgradePath } from './upgrade-paths.js';
+import {
+  composeEnvPrefix,
+  composeImages,
+  composeProjectName,
+  dockerMemTotal,
+  ensureDataDirs,
+  ensureStackSecrets,
+  globalProperties,
+  hasPgDataBind,
+  hopComposeFile,
+  imageRegistry,
+  isPrereleaseImage,
+  missingImages,
+  projectToComposeRequest,
+  provisionCompose,
+  registryLogin,
+  renderCompose,
+  stopRunningStacks,
+  validateCompose,
+  writeStackConfig,
+} from './provision.js';
+import { computeAlfrescoMemory } from './memory.js';
+import { modelsCoverage, NAMESPACES_IN_USE_SQL, validateModelsJar, type ContentModel, type ModelsCoverage } from './models.js';
+import { connectSource, dbConfigFromYaml, queryRows } from '../infra/pg.js';
+import { recordEvidence } from './evidence.js';
+import { stackLateServices } from './final-stack.js';
+import { errorExcerpt, evaluateSmoke, evaluateUpgradeLog } from './schema-upgrade.js';
+
+/** Ultimas lineas no vacias del log (acotadas) para el detalle de un fallo sin marcador conocido. */
+const lastLines = (log: string, n = 8): string =>
+  log.split('\n').map((l) => l.trim()).filter(Boolean).slice(-n).join(' | ').slice(-1500);
 import { describeError } from '../infra/errors.js';
 
 export interface StepContext {
@@ -26,6 +58,11 @@ export interface StepContext {
   state: string;
   runId: string;
   dryRun: boolean;
+  /**
+   * Version del hop que toca (la calcula `migrator_run_steps` desde `.migrator/hops.jsonl`). En una ruta
+   * de un solo hop, la version final.
+   */
+  hop?: string;
 }
 
 export interface StepOutcome {
@@ -117,20 +154,37 @@ const backupSourceDb: StepDefinition = {
     const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
     if (dstDir && ctx.destination.name !== 'local') {
       const remote = `${dstDir}/db/${ctx.project.target.database?.name ?? 'alfresco'}.dump`;
-      try {
-        const dump = await readFile(out, 'utf8');
-        const copy = await runShellWithInput(ctx.destination, `mkdir -p "${dstDir}/db" && cat > "${remote}"`, dump);
-        return ok(
-          'backup-source-db',
-          `dump ${out} · copia en el DESTINO ${remote}${copy.exitCode === 0 ? '' : ` (fallo la copia: ${copy.stderr.trim()})`}`,
-        );
-      } catch (error) {
-        return ok('backup-source-db', `dump ${out} (no se pudo copiar al destino: ${describeError(error)})`);
-      }
+      const copied = await copyDumpToDestination(ctx.destination, out, remote);
+      return copied.ok
+        ? ok('backup-source-db', `dump ${out} · copia verificada en el DESTINO ${remote} (${copied.bytes} bytes)`)
+        : fail('backup-source-db', `dump ${out} creado, pero la copia al DESTINO fallo: ${copied.reason}`);
     }
     return outcome;
   },
 };
+
+/**
+ * Copia el dump (BINARIO) al DESTINO por stdin como Buffer y verifica que el tamaño remoto coincide: un
+ * dump leido como texto se corrompe y pg_restore falla con "could not read from input file".
+ */
+export async function copyDumpToDestination(
+  host: HostRef,
+  local: string,
+  remote: string,
+): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }> {
+  let dump: Buffer;
+  try {
+    dump = await readFile(local);
+  } catch (error) {
+    return { ok: false, reason: `no se pudo leer ${local}: ${describeError(error)}` };
+  }
+  const copy = await runShellWithInput(host, `mkdir -p "$(dirname "${remote}")" && cat > "${remote}"`, dump);
+  if (copy.exitCode !== 0) return { ok: false, reason: copy.stderr.trim() || `exit=${copy.exitCode}` };
+  const size = await runShell(host, `wc -c < "${remote}"`);
+  const bytes = Number.parseInt(size.stdout.trim(), 10);
+  if (bytes !== dump.length) return { ok: false, reason: `tamaño remoto ${size.stdout.trim() || '?'} != local ${dump.length}` };
+  return { ok: true, bytes };
+}
 
 /** `copy-content`: replica el content store del origen al destino (rsync/S3/Azure, con delta). */
 const copyContent: StepDefinition = {
@@ -193,6 +247,38 @@ async function mountGuard(source: string, target: string): Promise<string | unde
 }
 
 /** `restore-target-db`: restaura el dump en la BD del DESTINO. */
+/**
+ * Cobertura de modelos frente al ORIGEN (solo lectura, BD del origen). Devuelve un mensaje de bloqueo si
+ * no se puede comprobar (fail-closed).
+ */
+async function sourceModelsCoverage(ctx: StepContext, models: ContentModel[]): Promise<ModelsCoverage | string> {
+  try {
+    const client = await connectSource(dbConfigFromYaml(ctx.project.source.database, 'SRC'));
+    try {
+      const rows = await queryRows(client, NAMESPACES_IN_USE_SQL);
+      return modelsCoverage(rows.map((r) => String(r.uri ?? '')), models, ctx.project.target.modelsNotRequired ?? []);
+    } finally {
+      await client.end();
+    }
+  } catch (error) {
+    return `BLOQUEO: no se pudo comprobar que modelos usa el origen (BD del origen no accesible: ${describeError(error)}); levanta la BD del origen y reintenta.`;
+  }
+}
+
+/**
+ * Motivo de bloqueo si `restore-target-db` se ejecuta fuera del PRIMER hop de la ruta (`undefined` si
+ * procede). Para repetir la ruta desde cero hay que reiniciar el progreso de hops (y el destino).
+ */
+export function restoreHopViolation(ctx: Pick<StepContext, 'hop' | 'project'>): string | undefined {
+  const hops = requireSupportedUpgradePath(ctx.project.source.version, ctx.project.target.version);
+  const first = hops[0]?.to;
+  if (!ctx.hop || !first || hops.length <= 1 || sameMinor(ctx.hop, first)) return undefined;
+  return (
+    `restore del dump del origen (${ctx.project.source.version}) solo en el PRIMER hop (${first}); el hop pendiente es ${ctx.hop}. ` +
+    'Restaurarlo aqui saltaria versiones. Para repetir desde cero hay que reiniciar el progreso de hops (.migrator/hops.jsonl) y el destino: decision humana.'
+  );
+}
+
 const restoreTargetDb: StepDefinition = {
   id: 'restore-target-db',
   description:
@@ -201,6 +287,10 @@ const restoreTargetDb: StepDefinition = {
   async run(ctx, params) {
     const inFile = String(params.inFile ?? `${ctx.state}/${ctx.runId}/db.dump`);
     const override = process.env.MIGRATOR_DB_RESTORE_CMD;
+    // El dump es de la version del ORIGEN: solo puede restaurarse en el PRIMER hop. En otro hop arrancaria
+    // una version posterior sobre la BD del origen (salto de version no soportado).
+    const blocked = restoreHopViolation(ctx);
+    if (blocked) return fail('restore-target-db', blocked);
     if (ctx.dryRun) {
       return skipped('restore-target-db', `dry-run: restore de ${inFile}`);
     }
@@ -217,6 +307,16 @@ const restoreTargetDb: StepDefinition = {
     // 1) Si el dump ya esta en el DESTINO (directorio de version), se restaura desde ahi (docker exec < file).
     const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
     const remoteCandidates = dstDir ? [`${dstDir}/db/${name}.dump`, `${dstDir}/db.dump`] : [];
+    // Si el dump local existe, la copia del DESTINO debe ser identica en tamaño (si no, se re-copia): una
+    // copia corrupta de un intento previo no debe restaurarse (el checkpoint de backup puede estar OK).
+    const localSize = await stat(inFile).then((info) => info.size).catch(() => undefined);
+    if (localSize !== undefined && remoteCandidates[0] && ctx.destination.name !== 'local') {
+      const sizes = await runShell(ctx.destination, `wc -c < "${remoteCandidates[0]}" 2>/dev/null`);
+      if (Number.parseInt(sizes.stdout.trim(), 10) !== localSize) {
+        const copied = await copyDumpToDestination(ctx.destination, inFile, remoteCandidates[0]);
+        if (!copied.ok) return fail('restore-target-db', `no se pudo copiar el dump al DESTINO: ${copied.reason}`);
+      }
+    }
     for (const remote of remoteCandidates) {
       const probe = await runShell(ctx.destination, `test -s "${remote}"`);
       if (probe.exitCode === 0) {
@@ -226,13 +326,9 @@ const restoreTargetDb: StepDefinition = {
       }
     }
     // 2) Si no, el dump esta en el host de CONTROL: se envia por STDIN al contenedor del DESTINO.
-    let dump = '';
-    try {
-      dump = await readFile(inFile, 'utf8');
-    } catch {
-      dump = '';
-    }
-    if (dump) {
+    // BINARIO: se envia como Buffer (leerlo como texto corrompe el dump).
+    const dump = await readFile(inFile).catch(() => undefined);
+    if (dump && dump.length > 0) {
       const command = `docker exec -i ${envFlag}${container} pg_restore -c --if-exists --no-owner -U ${user} -d ${name}`;
       const outcome = requireResult('restore-target-db', await runShellWithInput(ctx.destination, command, dump));
       return { ...outcome, command: undefined };
@@ -260,44 +356,265 @@ const schemaUpgrade: StepDefinition = {
       return requireResult('schema-upgrade', await runShell(ctx.destination, override));
     }
     // Sin override: arranca SOLO el servicio `alfresco` (la BD ya esta restaurada) y espera a que responda.
-    const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
-    const project = process.env.MIGRATOR_DST_COMPOSE_PROJECT ?? ctx.project.project;
     const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
-    const detected = baseUrl
-      ? await discoverRest(
-          baseUrl,
-          process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER,
-          process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD,
-        )
-      : undefined;
-    const minor = (detected?.version ?? ctx.project.target.version).split('.').slice(0, 2).join('.');
-    // Compose del OPERADOR (`target.composeFile`, EN EL DESTINO): se usa tal cual, sin `-p` (se respeta
-    // el nombre de proyecto del propio compose).
-    const external = !process.env.MIGRATOR_DST_COMPOSE_FILE && !!ctx.project.target.composeFile;
-    const file =
-      process.env.MIGRATOR_DST_COMPOSE_FILE ??
-      ctx.project.target.composeFile ??
-      (dstDir ? `${dstDir}/compose/docker-compose-${minor}.yml` : undefined);
-    if (!file) {
+    const compose = await hopCompose(ctx);
+    if (!compose) {
       return skipped('schema-upgrade', 'sin compose del hop: define target.composeFile, MIGRATOR_DST_COMPOSE_FILE o target.dataDir');
     }
-    const projectArg = external && !process.env.MIGRATOR_DST_COMPOSE_PROJECT ? '' : ` -p "${project}"`;
-    const up = await runShell(ctx.destination, `docker compose -f "${file}"${projectArg} up -d alfresco`);
+    // El content store copiado (rsync como el usuario SSH) debe ser del usuario de Alfresco en la imagen.
+    const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
+    if (!compose.external && dstDir) {
+      const owner = await runShell(ctx.destination, alfDataOwnershipCommand(dstDir));
+      if (owner.exitCode !== 0) {
+        return fail('schema-upgrade', `no se pudo asignar ${dstDir}/alf-data al usuario de Alfresco: ${owner.stderr.trim()}`);
+      }
+    }
+    // --force-recreate: contenedor (y log) nuevos, para que smoke-boot no lea errores de arranques previos.
+    const up = await runShell(ctx.destination, `${compose.cmd} up -d --force-recreate alfresco`);
     if (up.exitCode !== 0) {
       return fail('schema-upgrade', up.stderr.trim() || 'no se pudo arrancar el servicio alfresco');
     }
     if (!baseUrl) {
       return ok('schema-upgrade', 'alfresco arrancado (sin URL para esperar readiness)');
     }
+    // El auto-update de esquema de un hop grande tarda: espera configurable (defecto 30 min).
     const discovery = `${baseUrl.replace(/\/$/, '')}/api/discovery`;
-    for (let attempt = 1; attempt <= 60; attempt++) {
+    const timeoutS = Number(process.env.MIGRATOR_SCHEMA_UPGRADE_TIMEOUT_S ?? 1800);
+    const attempts = Math.max(1, Math.ceil(timeoutS / 10));
+    for (let attempt = 1; attempt <= attempts; attempt++) {
       const probe = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${process.env.MIGRATOR_DST_USER ?? 'admin'}:${process.env.MIGRATOR_DST_PASSWORD ?? 'admin'}" "${discovery}"`);
       if (probe.stdout.trim().startsWith('2')) {
-        return ok('schema-upgrade', `alfresco arrancado sobre la BD restaurada (discovery http=${probe.stdout.trim()})`);
+        const detail = `alfresco ${compose.version} arrancado sobre la BD restaurada (discovery http=${probe.stdout.trim()})`;
+        // Stack final: Share arranca cuando el repositorio ya responde.
+        const share = finalShareUrl(ctx, baseUrl, compose.version);
+        if (!share || compose.external) return ok('schema-upgrade', detail);
+        const late = await runShell(ctx.destination, `${compose.cmd} up -d ${stackLateServices(ctx.project.target.stack).join(' ')}`);
+        if (late.exitCode !== 0) return fail('schema-upgrade', `${detail}; Share no arranco: ${late.stderr.trim()}`);
+        const code = await waitHttp(ctx.destination, share, Number(process.env.MIGRATOR_SHARE_TIMEOUT_S ?? 600));
+        return code.startsWith('2') || code.startsWith('3')
+          ? ok('schema-upgrade', `${detail} · share http=${code}`)
+          : fail('schema-upgrade', `${detail}; Share no responde en ${share} (http=${code || 'sin respuesta'})`);
       }
-      await new Promise((resolve) => setTimeout(resolve, 5_000));
+      // Cada minuto: fallo de esquema/arranque en el log o contenedor parado => no se espera al timeout.
+      if (attempt % 6 === 0) {
+        const log = await runShell(ctx.destination, `${compose.cmd} logs --no-color --tail 400 alfresco`);
+        const upgrade = evaluateUpgradeLog(compose.version, log.stdout);
+        if (upgrade.error) {
+          return fail('schema-upgrade', `fallo al arrancar ${compose.version} (${upgrade.error}): ${errorExcerpt(log.stdout) ?? ''}`);
+        }
+        const state = (await runShell(ctx.destination, `${compose.cmd} ps -a alfresco --format "{{.State}}"`)).stdout.trim();
+        if (/exited|dead/i.test(state)) {
+          return fail('schema-upgrade', `el contenedor alfresco ${compose.version} se ha parado (${state}): ${lastLines(log.stdout)}`);
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
     }
-    return fail('schema-upgrade', 'alfresco no respondio (discovery) tras el arranque');
+    const tail = await runShell(ctx.destination, `${compose.cmd} logs --no-color --tail 400 alfresco`);
+    return fail(
+      'schema-upgrade',
+      `alfresco ${compose.version} no respondio (discovery) en ${timeoutS}s: ${errorExcerpt(tail.stdout) ?? lastLines(tail.stdout)}`,
+    );
+  },
+};
+
+/**
+ * Compose del hop en el DESTINO y el prefijo de `docker compose` para usarlo:
+ * - compose del OPERADOR (`target.composeFile` / `MIGRATOR_DST_COMPOSE_FILE`): tal cual, sin `-p` (se
+ *   respeta su nombre de proyecto) ni secretos del migrator;
+ * - compose GENERADO (`<dataDir>/compose/docker-compose-<hop>.yml`): con el nombre de proyecto valido y
+ *   los secretos del stack (sin ellos compose recrea servicios con variables vacias).
+ */
+/**
+ * URL de Share del stack FINAL (`undefined` si no aplica): con proxy en el mismo origen que el
+ * repositorio (/share/); sin proxy, en el 8081.
+ */
+export function finalShareUrl(ctx: StepContext, baseUrl: string, version: string): string | undefined {
+  const stack = ctx.project.target.stack;
+  if (!stack?.share || !sameMinor(version, ctx.project.target.version)) return undefined;
+  const url = new URL(baseUrl);
+  if (!stack.proxy) url.port = '8081';
+  return `${url.origin}/share/page`;
+}
+
+/** Espera a que una URL responda (codigo HTTP final) hasta `timeoutS`; devuelve el ultimo codigo. */
+async function waitHttp(host: HostRef, url: string, timeoutS: number): Promise<string> {
+  let code = '';
+  for (let attempt = 0; attempt < Math.max(1, Math.ceil(timeoutS / 10)); attempt++) {
+    code = (await runShell(host, `curl -s -o /dev/null -w "%{http_code}" "${url}"`)).stdout.trim();
+    if (code.startsWith('2') || code.startsWith('3')) return code;
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  return code;
+}
+
+/** uid del usuario `alfresco` en las imagenes del repositorio (7.x a 26.x). */
+export const ALFRESCO_UID = 33000;
+
+/** Da `<dataDir>/alf-data` al usuario de Alfresco sin sudo (contenedor efimero como root). */
+export const alfDataOwnershipCommand = (dstDir: string): string =>
+  `docker run --rm -v "${dstDir}/alf-data:/d" alpine chown -R ${ALFRESCO_UID} /d`;
+
+async function hopCompose(ctx: StepContext): Promise<{ cmd: string; file: string; version: string; external: boolean } | undefined> {
+  const version = ctx.hop ?? ctx.project.target.version;
+  const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
+  const explicit = process.env.MIGRATOR_DST_COMPOSE_FILE;
+  const external = !explicit && !!ctx.project.target.composeFile;
+  const file = explicit ?? ctx.project.target.composeFile ?? (dstDir ? hopComposeFile(dstDir, version) : undefined);
+  if (!file) return undefined;
+  const projectEnv = process.env.MIGRATOR_DST_COMPOSE_PROJECT;
+  if (external) {
+    return { cmd: `docker compose -f "${file}"${projectEnv ? ` -p "${projectEnv}"` : ''}`, file, version, external };
+  }
+  const secrets = await ensureStackSecrets(path.join(ctx.state, 'provision'));
+  const project = projectEnv ?? composeProjectName(ctx.project.project);
+  return { cmd: `${composeEnvPrefix(secrets)} docker compose -f "${file}" -p "${project}"`, file, version, external };
+}
+
+/**
+ * `provision-hop`: pone el DESTINO en la version del hop que toca. Para los stacks de Alfresco del
+ * DESTINO y levanta la INFRA con el compose de la version del hop, CONSERVANDO los datos (BD en el
+ * volumen del proyecto y content store en `<dataDir>/alf-data`). Alfresco arranca en `schema-upgrade`.
+ */
+const provisionHop: StepDefinition = {
+  id: 'provision-hop',
+  description:
+    'Pone el DESTINO en la version del hop que toca (7.4 -> 25.3 -> 26.2): para el stack anterior y levanta la infraestructura con <dataDir>/compose/docker-compose-<hop>.yml conservando BD y content store. Alfresco se arranca en schema-upgrade. Debe ir PRIMERO en la composicion del hop.',
+  writes: true,
+  async run(ctx) {
+    const hop = ctx.hop;
+    if (!hop) {
+      return fail('provision-hop', 'sin hop resuelto: lo calcula migrator_run_steps desde .migrator/hops.jsonl');
+    }
+    const composeFile = process.env.MIGRATOR_DST_COMPOSE_FILE ?? ctx.project.target.composeFile;
+    if (composeFile) {
+      return fail(
+        'provision-hop',
+        `El DESTINO usa el compose del operador (${composeFile}): el migrator no cambia su version. ` +
+          `Pon la imagen del repositorio en ${hop} en ese compose y ejecuta el hop SIN provision-hop (la guarda de hops verifica la version).`,
+      );
+    }
+    const dstDir = ctx.project.target.dataDir ?? process.env.MIGRATOR_DST_DIR;
+    if (!dstDir) {
+      return fail('provision-hop', 'Falta el directorio de version del DESTINO: define target.dataDir o MIGRATOR_DST_DIR');
+    }
+    // La BD debe ser la MISMA en todos los hops: si ya existe <dataDir>/pg-data se monta como bind.
+    const pgBind =
+      ['true', '1', 'yes', 'on'].includes((process.env.MIGRATOR_DST_PG_BIND ?? '').toLowerCase()) ||
+      (await hasPgDataBind(ctx.destination, dstDir));
+    // JAR de modelos del INSTALADOR (target.modelsJar): se valida ANTES de tocar el destino.
+    const localJar = ctx.project.target.modelsJar;
+    const hasModels = !!localJar;
+    const remoteJar = localJar ? `${dstDir}/models/${path.basename(localJar)}` : '';
+    const check = localJar ? await validateModelsJar(localJar) : undefined;
+    if (localJar && check && !check.ok) return fail('provision-hop', `JAR de modelos del instalador invalido (${localJar}): ${check.reason}`);
+    // PRIMER hop: los namespaces PROPIOS que usan los nodos del origen deben estar cubiertos por el JAR (o
+    // declarados como no necesarios). Si no, los nodos quedarian sin definicion: BLOQUEO (fail-closed).
+    const firstHop = requireSupportedUpgradePath(ctx.project.source.version, ctx.project.target.version)[0]?.to;
+    if (firstHop && sameMinor(hop, firstHop)) {
+      const coverage = await sourceModelsCoverage(ctx, check?.models ?? []);
+      if (typeof coverage === 'string') return fail('provision-hop', coverage);
+      if (coverage.missing.length) {
+        return fail(
+          'provision-hop',
+          `BLOQUEO (decision humana): el origen usa modelos propios no cubiertos ${localJar ? `por ${path.basename(localJar)}` : '(sin target.modelsJar)'}: ${coverage.missing.join(', ')}. ` +
+            'El instalador debe aportar el JAR de modelos (target.modelsJar) que los defina, o declararlos en target.modelsNotRequired si no se migran.',
+        );
+      }
+      if (!ctx.dryRun) {
+        const needsCode = (check?.models ?? []).flatMap((m) => m.classConstraints.map((c) => `${m.name}: ${c}`));
+        const summary = coverage.custom.length === 0
+          ? 'el origen no usa modelos propios'
+          : `${localJar ? `${path.basename(localJar)} (${check!.models.map((m) => m.name).join(', ')})` : 'sin JAR'} cubre ${coverage.custom.length - coverage.accepted.length}/${coverage.custom.length} namespaces propios en uso` +
+            (coverage.accepted.length ? `; no migrados por decision humana: ${coverage.accepted.join(', ')}` : '');
+        const jarWarnings = check?.warnings ?? [];
+        await recordEvidence(ctx.state, ctx.project.project, 'models', needsCode.length || coverage.accepted.length || jarWarnings.length ? 'WARN' : 'OK',
+          summary + (needsCode.length ? ` · restricciones con clase Java (necesitan el codigo): ${needsCode.join('; ')}` : '') +
+            (jarWarnings.length ? ` · avisos del JAR: ${jarWarnings.join('; ')}` : ''));
+      }
+    }
+    const plan = { ...projectToComposeRequest(ctx.project, hop, false, undefined, dstDir, pgBind), ...(hasModels ? { modelsJar: remoteJar } : {}) };
+    const file = hopComposeFile(dstDir, hop);
+    const images = composeImages(plan);
+    const repoImage = images[images.length - 1]!;
+    if (isPrereleaseImage(repoImage)) {
+      return fail('provision-hop', `Imagen PRE-RELEASE no permitida: ${repoImage}`);
+    }
+    if (ctx.dryRun) {
+      const models = check
+        ? ` · modelos ${path.basename(localJar!)}${check.moduleId ? ` (modulo ${check.moduleId})` : ''}: ${check.models.map((m) => m.name).join(', ')}` +
+          (check.warnings.length ? ` · AVISOS del JAR: ${check.warnings.join('; ')}` : '')
+        : ' · sin JAR de modelos';
+      return skipped('provision-hop', `dry-run: hop ${hop} · ${file} · ${repoImage}${models}`);
+    }
+    const host = ctx.destination;
+    try {
+      const memTotal = await dockerMemTotal(host);
+      const request = { ...plan, memory: memTotal ? computeAlfrescoMemory(memTotal) : undefined };
+      const registry = imageRegistry(repoImage);
+      const user = process.env.MIGRATOR_REGISTRY_USER ?? process.env.MIGRATOR_EE_USER;
+      const password = process.env.MIGRATOR_REGISTRY_PASSWORD ?? process.env.MIGRATOR_EE_PASSWORD;
+      if (registry && user && password) await registryLogin(host, registry, user, password);
+      // Validar ANTES de parar nada: un compose invalido o una imagen inexistente no deben dejar el destino caido.
+      const invalid = await validateCompose(host, renderCompose(request));
+      if (invalid) return fail('provision-hop', `compose del hop ${hop} invalido: ${invalid}`);
+      const missing = await missingImages(host, images);
+      if (missing.length > 0) return fail('provision-hop', `imagenes inexistentes en el registro: ${missing.join(', ')}`);
+      const workDir = path.join(ctx.state, 'provision');
+      const secrets = await ensureStackSecrets(workDir);
+      await ensureDataDirs(host, dstDir, pgBind);
+      // JAR de modelos del instalador: copia binaria verificada al DESTINO, montado en cada hop.
+      if (localJar) {
+        const copied = await copyDumpToDestination(host, localJar, remoteJar);
+        if (!copied.ok) return fail('provision-hop', `no se pudo copiar el JAR de modelos al DESTINO: ${copied.reason}`);
+      }
+      await writeStackConfig(host, dstDir, globalProperties(request, secrets));
+      const stopped = await stopRunningStacks(host, composeProjectName(ctx.project.project));
+      await provisionCompose(request, workDir, host);
+      return ok(
+        'provision-hop',
+        `hop ${hop}: infraestructura levantada con ${file} (${repoImage})${hasModels ? ` · modelos ${path.basename(remoteJar)}` : ''}, contraseña de BD alineada${stopped.length ? ` · parados: ${stopped.join(', ')}` : ''}`,
+      );
+    } catch (error) {
+      return fail('provision-hop', describeError(error));
+    }
+  },
+};
+
+/**
+ * `smoke-boot`: verifica el hop recien arrancado (fail-closed): version del DESTINO == hop, raiz
+ * resuelve y log sin errores de esquema. Solo lectura. Autoriza a registrar el hop como hecho.
+ */
+const smokeBoot: StepDefinition = {
+  id: 'smoke-boot',
+  description:
+    'Smoke test del hop (solo lectura): el DESTINO responde EN LA VERSION DEL HOP, la raiz resuelve y el log de alfresco no tiene errores de esquema. Va tras schema-upgrade.',
+  writes: false,
+  async run(ctx) {
+    const hop = ctx.hop ?? ctx.project.target.version;
+    if (ctx.dryRun) return skipped('smoke-boot', `dry-run: smoke del hop ${hop}`);
+    const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
+    if (!baseUrl) return fail('smoke-boot', 'sin MIGRATOR_DST_BASE_URL / target.baseUrl: no se puede verificar el hop');
+    const user = process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER;
+    const password = process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD;
+    const detected = await discoverRest(baseUrl, user, password);
+    const creds = `${user ?? 'admin'}:${password ?? 'admin'}`;
+    const root = await runShell(
+      ctx.destination,
+      `curl -s -o /dev/null -w "%{http_code}" -u "${creds}" "${baseUrl.replace(/\/$/, '')}/api/-default-/public/alfresco/versions/1/nodes/-root-"`,
+    );
+    const compose = await hopCompose(ctx);
+    const log = compose ? (await runShell(ctx.destination, `${compose.cmd} logs --no-color --tail 500 alfresco`)).stdout : '';
+    const smoke = evaluateSmoke({ hop, version: detected?.version, rootCode: root.stdout.trim(), log });
+    let detail = `hop ${hop} · version=${detected?.version ?? 'no detectada'} · root http=${root.stdout.trim() || 'sin respuesta'}`;
+    if (!smoke.ok) return fail('smoke-boot', `${detail} — ${smoke.reason}`);
+    // Stack final con Share: tambien debe responder.
+    const share = finalShareUrl(ctx, baseUrl, hop);
+    if (share) {
+      const code = (await runShell(ctx.destination, `curl -s -o /dev/null -w "%{http_code}" "${share}"`)).stdout.trim();
+      detail += ` · share http=${code || 'sin respuesta'}`;
+      if (!(code.startsWith('2') || code.startsWith('3'))) return fail('smoke-boot', `${detail} — Share no responde en ${share}`);
+    }
+    return ok('smoke-boot', detail);
   },
 };
 
@@ -327,7 +644,19 @@ const reindex: StepDefinition = {
       );
     }
     if (!override) {
-      return skipped('reindex', 'sin MIGRATOR_REINDEX_CMD');
+      // En la version FINAL el indice es obligatorio: saltarlo daria un OK falso del hop final. Se falla
+      // con el bloqueo concreto para que lo resuelva el humano.
+      const engine = (ctx.project.target.search?.engine ?? 'solr').toUpperCase();
+      const edition = (ctx.project.target.edition ?? 'CE').toUpperCase();
+      return fail(
+        'reindex',
+        `BLOQUEO (decision humana): no hay mecanismo de reindexado para ${edition} ${ctx.project.target.version} con ${engine}. ` +
+          (engine === 'SOLR'
+            ? 'Define MIGRATOR_REINDEX_CMD con el reindexado de Solr (tracking/borrado de cores).'
+            : edition === 'EE'
+              ? 'Define MIGRATOR_REINDEX_CMD con la Alfresco Reindexing app (Search Enterprise).'
+              : 'La Reindexing app (Search Enterprise) es de Enterprise: en CE hay que decidir el motor de busqueda del destino y definir MIGRATOR_REINDEX_CMD.'),
+      );
     }
     const values = {
       prefixesFile: String(params.prefixesFile ?? ''),
@@ -367,10 +696,12 @@ const verifyTarget: StepDefinition = {
 
 export const STEPS: StepDefinition[] = [
   preflightTarget,
+  provisionHop,
   backupSourceDb,
   copyContent,
   restoreTargetDb,
   schemaUpgrade,
+  smokeBoot,
   reindex,
   verifyTarget,
 ];

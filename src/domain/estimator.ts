@@ -5,6 +5,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
+import { reindexPlan, type ReindexPlan } from './reindex-policy.js';
 import { dataDir } from './data-dir.js';
 
 export type Confidence = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -20,6 +21,8 @@ export interface EstimationInput {
   parallelism: number;
   changeRatePerDay: number;
   throughputOverrides?: Record<string, number>;
+  /** Motor/edicion/version destino y ventana de corte: activan la politica de reindex. */
+  reindex?: { engine: string; edition: string; targetVersion: string; windowHours?: number };
 }
 
 export interface PhaseEstimate {
@@ -37,12 +40,15 @@ export interface Estimation {
   bottleneck: 'SCHEMA_UPGRADE' | 'REINDEX' | 'CONTENT_COPY';
   risks: string[];
   levers: string[];
+  /** Politica de reindex recomendada segun tamaño y ventana (si se aporto `reindex`). */
+  reindexPlan?: ReindexPlan;
 }
 
 interface EstimationData {
   throughput: { contentCopyMbps: number; dbRestoreMbps: number; reindexNodesPerSec: number };
   factors: Record<string, number>;
   thresholds: { auditHigh: number };
+  reindex?: { contentPassFactor?: number };
   levers: string[];
 }
 
@@ -57,6 +63,7 @@ function data(): EstimationData {
     factors: parsed.factors ?? {},
     thresholds: parsed.thresholds ?? { auditHigh: 100_000_000 },
     levers: parsed.levers ?? [],
+    ...(parsed.reindex ? { reindex: parsed.reindex } : {}),
   };
   return cached;
 }
@@ -111,7 +118,18 @@ export function estimate(input: EstimationInput): Estimation {
 
   const confidence: Confidence = Object.keys(overrides).length > 0 ? 'HIGH' : 'LOW';
 
+  const reindex = input.reindex
+    ? reindexPlan({
+        nodes: input.nodes,
+        metadataNodesPerSec: reindexRate,
+        contentPassFactor: d.reindex?.contentPassFactor ?? 4,
+        ...input.reindex,
+      })
+    : undefined;
+  if (reindex && !reindex.fitsWindow) risks.push(`El reindex completo no cabe en la ventana de corte: politica ${reindex.policy}`);
+
   return {
+    ...(reindex ? { reindexPlan: reindex } : {}),
     phases,
     cutoverMinutes: hoursToMinutes(cutover),
     totalMinutes: hoursToMinutes(0.5 + preStaging + cutover + postCutover),

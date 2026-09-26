@@ -4,3 +4,6 @@ lib/
 .env.local
 *.log
 .DS_Store
+
+# Estado de ejecucion del migrador (datos de entorno/cliente): nunca en git
+.migrator/

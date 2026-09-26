@@ -138,6 +138,23 @@ export const sourceCountsFor = (project: ProjectConfig): Promise<Record<string, 
 export const targetCountsFor = (project: ProjectConfig): Promise<Record<string, number>> =>
   dbCounts(dbConfigFromYaml(project.target.database, 'DST'));
 
+/**
+ * Recuentos del DESTINO con `docker exec psql` en su contenedor de Postgres (solo SELECT) cuando el puerto
+ * no esta publicado y el JDBC TCP desde el migrador no llega.
+ */
+export async function remoteDbCounts(host: HostRef, container: string, user: string, name: string): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  for (const [label, sql] of Object.entries(PARITY_COUNT_SQL)) {
+    const out = await runShell(host, `docker exec ${container} psql -U ${user} -d ${name} -At -c "${sql}"`);
+    const value = Number.parseInt(out.stdout.trim(), 10);
+    if (out.exitCode !== 0 || !Number.isFinite(value)) {
+      throw new Error(`recuento ${label} via docker exec ${container} fallido: ${out.stderr.trim() || out.stdout.trim()}`);
+    }
+    result[label] = value;
+  }
+  return result;
+}
+
 /** Inventario de un content store FS local; `undefined` si no es FS o no hay ruta. */
 export async function localStoreInventory(store?: { type?: string; path?: string }): Promise<StoreInventory | undefined> {
   if (!store?.path || (store.type ?? 'FS').toUpperCase() !== 'FS') return undefined;
@@ -145,9 +162,22 @@ export async function localStoreInventory(store?: { type?: string; path?: string
   return { files: scan.files, bytes: scan.bytes };
 }
 
-/** Inventario de un content store remoto via SSH (`find` + `du`); `undefined` si no es medible. */
+/**
+ * Inventario de un content store remoto via SSH; `undefined` si no es medible. Mide el TAMAÑO APARENTE
+ * (suma de bytes de los ficheros, igual que el origen), no el uso en disco de `du` (bloques de 4K), que
+ * inflaria el destino ~3 KB por fichero. Sin `find -printf` (no GNU) cae a `du -sk`.
+ */
 export async function remoteStoreInventory(host: HostRef, path: string): Promise<StoreInventory | undefined> {
   if (!path) return undefined;
+  // `-printf` solo en GNU find: se comprueba antes (en un pipe el fallo de find quedaria oculto por awk).
+  const apparent = await runShell(
+    host,
+    `find "${path}" -maxdepth 0 -printf '' >/dev/null 2>&1 && find "${path}" -type f -printf '%s\\n' 2>/dev/null | awk '{n++; s+=$1} END {print n+0, s+0}'`,
+  );
+  const [n, s] = apparent.stdout.trim().split(/\s+/).map((value) => Number(value));
+  if (apparent.exitCode === 0 && Number.isFinite(n) && Number.isFinite(s)) {
+    return { files: n!, bytes: s! };
+  }
   const command = `find "${path}" -type f 2>/dev/null | wc -l; du -sk "${path}" 2>/dev/null | awk '{print $1}'`;
   const result = await runShell(host, command);
   if (result.exitCode !== 0) return undefined;

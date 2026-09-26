@@ -8,7 +8,7 @@ import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { requireSupportedUpgradePath, upgradePathWarnings } from '../domain/upgrade-paths.js';
-import { assertDestinationHop, recordCompletedHop } from '../domain/hops.js';
+import { assertDestinationHop, hopGuardApplies, loadHopProgress, pendingHopVersion, recordCompletedHop } from '../domain/hops.js';
 import { STEPS } from '../domain/steps.js';
 import { runSteps } from '../domain/runner.js';
 import { latestRunId, loadCheckpoints } from '../domain/checkpoints.js';
@@ -98,7 +98,11 @@ export function registerExecutionTools(ctx: Context): void {
         warnings.push(...upgradePathWarnings(hops));
 
         // Guarda de hops: en ruta multi-hop, el DESTINO debe estar en la version del hop que toca.
-        if (execute) await assertDestinationHop(project, state, hops);
+        // Excepcion: si la composicion EMPIEZA por provision-hop, ese paso pone el DESTINO en la version
+        // del hop y smoke-boot lo verifica despues (fail-closed).
+        if (execute && hopGuardApplies(args.steps)) await assertDestinationHop(project, state, hops);
+        const completed = new Set((await loadHopProgress(state, project.project)).map((p) => p.to));
+        const hop = pendingHopVersion(hops, completed, project.target.version);
 
         // Experiencia previa de la campana (project+stage): primer intento o reanudacion pendiente.
         const previous = (await loadExperiences(state, project.project)).find(
@@ -133,6 +137,7 @@ export function registerExecutionTools(ctx: Context): void {
             state,
             runId,
             dryRun: !execute,
+            hop,
           },
           args.steps,
           { resume: args.resume === true, dryRun: !execute },

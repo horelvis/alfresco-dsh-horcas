@@ -6,7 +6,9 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { assessSource } from '../domain/assessment.js';
-import { buildChecklist } from '../domain/checklist.js';
+import { applyEvidence, buildChecklist } from '../domain/checklist.js';
+import { checklistFacts } from '../domain/evidence.js';
+import { stateDir } from '../domain/experience.js';
 import { resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { openAiCompatibleClient, review, type ReviewStage } from '../domain/reviewer.js';
 
@@ -38,7 +40,7 @@ export function registerReviewerTools(ctx: Context): void {
           restUser: process.env.MIGRATOR_SRC_USER,
           restPassword: process.env.MIGRATOR_SRC_PASSWORD,
         });
-        const checklist = buildChecklist({
+        const checklist = applyEvidence(buildChecklist({
           project: project.project,
           sourceVersion: project.source.version,
           targetVersion: project.target.version,
@@ -47,7 +49,7 @@ export function registerReviewerTools(ctx: Context): void {
           sourceSearch: project.source.search?.engine ?? 'solr',
           targetSearch: project.target.search?.engine ?? 'solr',
           hops: hops.map((h) => ({ from: h.from, to: h.to, pathClass: h.pathClass })),
-        });
+        }), await checklistFacts(stateDir(), project.project, hops));
 
         const baseUrl = process.env.MIGRATOR_AI_BASE_URL ?? process.env.OPENAI_BASE_URL;
         const apiKey = process.env.MIGRATOR_AI_API_KEY ?? process.env.OPENAI_API_KEY;

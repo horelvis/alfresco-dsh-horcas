@@ -1,7 +1,7 @@
 # Patch de desarrollo: monta el plugin del migrador en dsh sin publicarlo.
 #
 #   pnpm install && pnpm build
-#   dsh --profile headless --patch ./cordis.yml "analiza la migracion gadex"
+#   dsh --profile headless --patch ./cordis.yml "analiza la migracion de ejemplo"
 #
 # Formato: array de entradas de loader (PatchOptions). `insert` añade filas de plugin; el nombre
 # puede ser un package specifier, ruta absoluta o ruta relativa al patch (se convierte a file URL).

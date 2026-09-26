@@ -7,6 +7,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { installSecurity, type SecurityContext } from './security/policy.js';
+import { installRedaction, type RedactContext } from './security/redact.js';
 import { installApproval, type ApprovalContext } from './approval.js';
 import { installLanguage } from './language.js';
 import { installPrompt } from './prompt.js';
@@ -30,17 +31,24 @@ import { registerVerifyTools } from './tools/verify.js';
 import { registerHelpTools } from './tools/help.js';
 import { registerJournalTools } from './tools/journal.js';
 import { registerLessonTools } from './tools/lessons.js';
+import { registerReportTools } from './tools/report.js';
+import { registerSourceStackTools } from './tools/source-stack.js';
+import { registerTargetStateTools } from './tools/target-state.js';
 
 export const name = 'dsh-plugin-alfresco-migrator';
 export const inject = ['tools', 'systemPrompt', 'skills'];
 
 export function apply(ctx: Context): void {
   installSecurity(ctx as unknown as SecurityContext);
+  installRedaction(ctx as unknown as RedactContext);
   installApproval(ctx as unknown as ApprovalContext);
   installLanguage(ctx as unknown as Parameters<typeof installLanguage>[0]);
   installPrompt(ctx as unknown as Parameters<typeof installPrompt>[0]);
   void installSkills(ctx as unknown as SkillsContext);
   registerReadTools(ctx);
+  registerReportTools(ctx);
+  registerSourceStackTools(ctx);
+  registerTargetStateTools(ctx);
   registerCoherenceTools(ctx);
   registerAssessmentTools(ctx);
   registerPlanningTools(ctx);

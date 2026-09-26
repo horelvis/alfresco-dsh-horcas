@@ -7,6 +7,10 @@ import { forCodes } from '../domain/recommendations.js';
 import { breakingChangeGates, resolveUpgradePath } from '../domain/upgrade-paths.js';
 import { dataDir } from '../domain/data-dir.js';
 import { connectSource, queryRows, REPLICATION_SQL, sourceDbConfigFromEnv } from '../infra/pg.js';
+import { recordEvidence } from '../domain/evidence.js';
+import { stateDir } from '../domain/experience.js';
+import { loadProject } from '../domain/project-config.js';
+import { workspaceCwd } from '../infra/session.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
@@ -100,13 +104,20 @@ export function registerReadTools(ctx: Context): void {
           return text(`${v.healthy ? 'OK' : 'DEFECTO'}: ${v.detail} | replicacion(CDC)=${v.replication}`);
         },
       },
-      async execute(args) {
+      async execute(args, exec) {
         const reference = await loadSchemaReference(args.version, dataDir());
         const client = await connectSource(sourceDbConfigFromEnv());
         try {
           const integrity = compare(reference, await liveCatalog(client));
           const replicationRows = await queryRows(client, REPLICATION_SQL);
           const replication = Number(replicationRows[0]?.objects ?? 0);
+          const project = await loadProject(undefined, workspaceCwd(exec)).then((p) => p.project).catch(() => undefined);
+          if (project) {
+            await recordEvidence(stateDir(), project, 'schema-pk', integrity.healthy ? 'OK' : 'FAIL',
+              `${integrity.tablesChecked} tablas vs referencia ${integrity.referenceVersion}: ${integrity.healthy ? 'PK/UNIQUE completos' : `${integrity.mismatches.length} defectos`}`);
+            await recordEvidence(stateDir(), project, 'cdc', replication === 0 ? 'OK' : 'FAIL',
+              replication === 0 ? 'sin replicacion logica activa' : `${replication} objetos de replicacion logica activos`);
+          }
           return {
             healthy: integrity.healthy,
             referenceVersion: integrity.referenceVersion,

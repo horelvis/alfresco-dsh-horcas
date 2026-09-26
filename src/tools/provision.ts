@@ -11,7 +11,9 @@ import { loadProject } from '../domain/project-config.js';
 import { requireDistinctTarget } from '../domain/guards.js';
 import { requireSupportedUpgradePath } from '../domain/upgrade-paths.js';
 import {
+  composeProjectName,
   destinationRunning,
+  dockerMemTotal,
   projectToComposeRequest,
   provisionCompose,
   ensureDataDirs,
@@ -37,22 +39,11 @@ import {
 } from '../domain/provision.js';
 import { stateDir } from '../domain/experience.js';
 import { computeAlfrescoMemory, type AlfrescoMemory } from '../domain/memory.js';
-import { runShell, type HostRef } from '../infra/exec.js';
+import type { HostRef } from '../infra/exec.js';
 import { describeError } from '../infra/errors.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 const json = <T>(value: T): never => JSON.parse(JSON.stringify(value)) as never;
-
-/** RAM asignada a Docker en el host (bytes); `undefined` si no se puede detectar. */
-async function dockerMemTotal(host: HostRef): Promise<number | undefined> {
-  try {
-    const result = await runShell(host, `docker info --format '{{.MemTotal}}'`);
-    const bytes = Number.parseInt(result.stdout.trim(), 10);
-    return result.exitCode === 0 && Number.isFinite(bytes) && bytes > 0 ? bytes : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 function destinationHost(project: Awaited<ReturnType<typeof loadProject>>): HostRef {
   if (project.access.mode === 'local' || Object.keys(project.access.hosts).length === 0) return { name: 'local' };
@@ -73,7 +64,7 @@ export function registerProvisionTools(ctx: Context): void {
         dstDir: {
           type: 'string',
           description:
-            'Carpeta base EN EL HOST DESTINO (por SSH, p.ej. 192.168.100.51) para los datos de la version: content store en <dstDir>/alf-data y BD en <dstDir>/pg-data. NO es una ruta local. Si falta, se usa MIGRATOR_DST_DIR.',
+            'Carpeta base EN EL HOST DESTINO (por SSH, p.ej. 192.0.2.11) para los datos de la version: content store en <dstDir>/alf-data y BD en <dstDir>/pg-data. NO es una ruta local. Si falta, se usa MIGRATOR_DST_DIR.',
         },
       },
       output: {
@@ -218,7 +209,7 @@ export function registerProvisionTools(ctx: Context): void {
             await writeStackConfig(host, dstDir, globalProperties(requests[0]!.request, await ensureStackSecrets(workDir)));
           }
         }
-        const stopped = execute ? await stopRunningStacks(host) : [];
+        const stopped = execute ? await stopRunningStacks(host, composeProjectName(project.project)) : [];
         try {
           for (const { request } of requests) {
             if (execute) {

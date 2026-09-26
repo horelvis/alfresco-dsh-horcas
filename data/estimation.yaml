@@ -22,6 +22,11 @@ factors:
   cutoverSafetyFactor: 1.2
   postCutoverContentFactor: 0.3
 
+# Reindex: la pasada de CONTENIDO (extraccion de texto/transformaciones) es mas lenta que la de metadatos.
+# SUPUESTO sin cifra oficial: medir docs/s de metadatos y de contenido con un piloto y sobreescribir.
+reindex:
+  contentPassFactor: 4
+
 # Umbrales de riesgo / reglas de juicio.
 thresholds:
   auditHigh: 100000000

@@ -31,7 +31,7 @@ describe('nextAction', () => {
 
 describe('sessionsDirFor', () => {
   it('codifica espacios y barras como dsh', () => {
-    const dir = sessionsDirFor('/Volumes/Macintosh SSD - Daten/u/gadex-migration', '/home/u');
-    expect(dir).toBe('/home/u/.dsh/sessions/--Volumes-Macintosh~0020SSD~0020-~0020Daten-u-gadex-migration--');
+    const dir = sessionsDirFor('/Volumes/Mac SSD/u/acme-migration', '/home/u');
+    expect(dir).toBe('/home/u/.dsh/sessions/--Volumes-Mac~0020SSD-u-acme-migration--');
   });
 });

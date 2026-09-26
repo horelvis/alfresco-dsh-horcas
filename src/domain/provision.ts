@@ -10,10 +10,22 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import yaml from 'js-yaml';
+import { dataDir } from './data-dir.js';
 import { runShell, runShellWithInput, type ExecResult, type HostRef } from '../infra/exec.js';
 import { memLimitForCompose, type AlfrescoMemory } from './memory.js';
-import { parseVersion } from './versions.js';
+import { compareTuple, parseVersion } from './versions.js';
 import type { ProjectConfig } from './project-config.js';
+import {
+  extensionDockerfile,
+  proxyConfig,
+  repositoryJavaOpts,
+  stackInfraServices,
+  shareImage,
+  transformImage,
+  type FinalStack,
+} from './final-stack.js';
 
 export interface ComposeRequest {
   projectName: string;
@@ -34,6 +46,10 @@ export interface ComposeRequest {
   pgBind?: boolean;
   /** Imagen EXACTA del repositorio (si se aporta, manda sobre `edition`+`acsVersion`). */
   acsImage?: string;
+  /** Stack de la version FINAL (Share, transform, proxy, extensiones). Solo en el ultimo hop. */
+  stack?: FinalStack;
+  /** JAR de modelos de contenido EN EL DESTINO: se monta en TODOS los hops. */
+  modelsJar?: string;
 }
 
 /** `true` si el tag de la imagen es PRE-RELEASE (Alpha/Beta/RC/SNAPSHOT/M): no usar en migracion. */
@@ -43,6 +59,8 @@ export function isPrereleaseImage(image: string): boolean {
 }
 
 const POSTGRES_IMAGE = 'postgres:15';
+/** Cabecera de los compose GENERADOS: solo esos se pueden regenerar (el del operador nunca se toca). */
+export const GENERATED_MARKER = '# generado por alfresco-migrator (se regenera; no editar a mano)';
 // Los tags de ActiveMQ NO son "genericos": en el registro solo existen los -jre17-rockylinux8.
 const ACTIVEMQ_5 = 'alfresco/alfresco-activemq:5.18.7-jre17-rockylinux8';
 const ACTIVEMQ_6 = 'alfresco/alfresco-activemq:6.2.9-jre17-rockylinux8';
@@ -67,12 +85,23 @@ const searchImage = (engine: string | undefined): string => {
   }
 };
 
-const repositoryImage = (edition: string, version: string): string => {
+/** Ultimo parche conocido por version (`data/images.yaml`); vacio si no hay fichero. */
+function latestPatches(): Record<string, string> {
+  try {
+    const doc = yaml.load(readFileSync(path.join(dataDir(), 'images.yaml'), 'utf8')) as { repositoryCommunity?: Record<string, string> };
+    return doc.repositoryCommunity ?? {};
+  } catch {
+    return {};
+  }
+}
+
+export const repositoryImage = (edition: string, version: string): string => {
   const repository = edition === 'EE' ? 'quay.io/alfresco/alfresco-content-repository' : 'alfresco/alfresco-content-repository-community';
-  // Los tags no son genericos: `7.4`/`25.3`/`26.2` NO existen; hay que usar el patch exacto (`7.4.2`,
-  // `25.3.0`, `26.2.0`). Si la version no trae patch, se completa con `.0`.
-  const exact = version.split('.').length >= 3 ? version : `${version}.0`;
-  return `${repository}:${exact}`;
+  // Los tags no son genericos: `7.4`/`25.3`/`26.2` NO existen; hay que usar el patch exacto. Sin patch en la
+  // version: el ULTIMO parche conocido (data/images.yaml, solo CE) o `.0`.
+  if (version.split('.').length >= 3) return `${repository}:${version}`;
+  const known = edition === 'EE' ? undefined : latestPatches()[version];
+  return `${repository}:${known ?? `${version}.0`}`;
 };
 
 const jdbcUrl = (db: ComposeRequest['database'], host: string): string => {
@@ -89,6 +118,7 @@ export function renderCompose(request: ComposeRequest): string {
   const user = db?.user ?? 'alfresco';
   const search = (request.search?.engine ?? 'OPENSEARCH').toUpperCase();
   const lines: string[] = [];
+  lines.push(GENERATED_MARKER);
   lines.push(`name: ${composeProjectName(request.projectName)}`);
   lines.push('services:');
   lines.push('  postgres:');
@@ -114,26 +144,37 @@ export function renderCompose(request: ComposeRequest): string {
   lines.push(`    image: ${searchImage(search)}`);
   lines.push('    environment:');
   lines.push('      discovery.type: single-node');
-  if (search !== 'ELASTICSEARCH') {
-    lines.push('      plugins.security.disabled: "true"');
-  }
+  lines.push(search === 'ELASTICSEARCH' ? '      xpack.security.enabled: "false"' : '      plugins.security.disabled: "true"');
+  const stack = request.stack;
+  const repoBase = request.acsImage ?? repositoryImage(request.edition, request.acsVersion);
   lines.push('  alfresco:');
-  lines.push(`    image: ${request.acsImage ?? repositoryImage(request.edition, request.acsVersion)}`);
+  if (stack?.extensions?.repo) {
+    // Imagen DERIVADA con las extensiones migradas (se construye en el DESTINO desde su carpeta).
+    lines.push(`    image: ${composeProjectName(request.projectName)}-repo-ext:${slug(request.acsVersion)}`);
+    pushBuild(lines, stack.extensions.repo, extensionDockerfile(repoBase, 'alfresco'));
+  } else {
+    lines.push(`    image: ${repoBase}`);
+  }
   lines.push(`    mem_limit: ${request.memory ? memLimitForCompose(request.memory) : '2560m'}`);
   lines.push('    depends_on:');
   lines.push('      - postgres');
   lines.push('      - activemq');
   lines.push('      - search');
   lines.push('    environment:');
-  lines.push(`      JAVA_OPTS: "${request.memory ? request.memory.javaOpts : '-Xms1g -Xmx2g'}"`);
+  const repoOpts = [request.memory ? request.memory.javaOpts : '-Xms1g -Xmx2g', ...repositoryJavaOpts(stack, request.acsVersion)];
+  lines.push(`      JAVA_OPTS: "${repoOpts.join(' ')}"`);
+  lines.push(`      JAVA_TOOL_OPTIONS: "${keystoreJavaOpts()}"`);
   lines.push(`      DB_URL: ${jdbcUrl(db, 'postgres')}`);
   lines.push(`      DB_USERNAME: ${user}`);
   lines.push('      DB_PASSWORD: ${POSTGRES_PASSWORD}');
   lines.push('      ACTIVEMQ_ADMIN_LOGIN: ${ACTIVEMQ_ADMIN_LOGIN}');
   lines.push('      ACTIVEMQ_ADMIN_PASSWORD: ${ACTIVEMQ_ADMIN_PASSWORD}');
   lines.push('      ELASTICSEARCH_HOSTS: http://search:9200');
-  lines.push('    ports:');
-  lines.push('      - "8080:8080"');
+  // Con proxy, el 8080 lo publica el proxy (entrada unica /alfresco + /share).
+  if (!stack?.proxy) {
+    lines.push('    ports:');
+    lines.push('      - "8080:8080"');
+  }
   lines.push('    volumes:');
   lines.push(request.dataDir ? `      - ${request.dataDir}/alf-data:/usr/local/tomcat/alf_data` : '      - alfresco-content:/usr/local/tomcat/alf_data');
   if (request.dataDir) {
@@ -141,14 +182,48 @@ export function renderCompose(request: ComposeRequest): string {
     // Spring falla al crear los beans de BD. Se monta un fichero generado con la config de BD.
     lines.push(`      - ${request.dataDir}/config/alfresco-global.properties:/usr/local/tomcat/shared/classes/alfresco-global.properties:ro`);
   }
-  if (request.withShare) {
+  if (request.modelsJar) {
+    // Modelos de contenido del origen (independientes del codigo): mismos tipos/aspectos en cada hop.
+    lines.push(`      - ${request.modelsJar}:/usr/local/tomcat/webapps/alfresco/WEB-INF/lib/${path.posix.basename(request.modelsJar)}:ro`);
+  }
+  if (stack?.share || request.withShare) {
+    const host = stack?.publicHost ?? 'localhost';
+    const base = shareImage(stack ?? {}, request.acsVersion, request.edition);
     lines.push('  share:');
-    lines.push(`    image: alfresco/alfresco-share:${request.acsVersion}`);
+    if (stack?.extensions?.share) {
+      lines.push(`    image: ${composeProjectName(request.projectName)}-share-ext:${slug(request.acsVersion)}`);
+      pushBuild(lines, stack.extensions.share, extensionDockerfile(base, 'share'));
+    } else {
+      lines.push(`    image: ${base}`);
+    }
+    lines.push('    mem_limit: 1g');
+    lines.push('    depends_on:');
+    lines.push('      - alfresco');
     lines.push('    environment:');
     lines.push('      REPO_HOST: alfresco');
-    lines.push('      REPO_PORT: 8080');
+    lines.push('      REPO_PORT: "8080"');
+    lines.push(`      CSRF_FILTER_ORIGIN: http://${host}:8080`);
+    lines.push(`      CSRF_FILTER_REFERER: http://${host}:8080/share/.*`);
+    lines.push(`      JAVA_OPTS: "-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=80 -Dalfresco.host=${host} -Dalfresco.port=8080 -Dalfresco.context=alfresco -Dalfresco.protocol=http"`);
+    if (!stack?.proxy) {
+      lines.push('    ports:');
+      lines.push('      - "8081:8080"');
+    }
+  }
+  if (stack?.transform) {
+    lines.push('  transform-core-aio:');
+    lines.push(`    image: ${transformImage(stack, request.acsVersion)}`);
+    lines.push('    mem_limit: 1536m');
+    lines.push('    environment:');
+    lines.push('      JAVA_OPTS: "-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=80"');
+  }
+  if (stack?.proxy) {
+    lines.push('  proxy:');
+    lines.push('    image: nginx:stable-alpine');
     lines.push('    ports:');
-    lines.push('      - "8081:8080"');
+    lines.push('      - "8080:8080"');
+    lines.push('    volumes:');
+    lines.push(`      - ${request.dataDir ?? '.'}/config/nginx.conf:/etc/nginx/nginx.conf:ro`);
   }
   lines.push('volumes:');
   lines.push('  alfresco-db:');
@@ -156,6 +231,14 @@ export function renderCompose(request: ComposeRequest): string {
     lines.push('  alfresco-content:');
   }
   return lines.join('\n') + '\n';
+}
+
+/** `build:` con Dockerfile inline (contexto = carpeta de extensiones EN EL DESTINO). */
+function pushBuild(lines: string[], context: string, dockerfile: string): void {
+  lines.push('    build:');
+  lines.push(`      context: ${context}`);
+  lines.push('      dockerfile_inline: |');
+  for (const line of dockerfile.split('\n')) lines.push(`        ${line}`);
 }
 
 export const slug = (version: string): string => version.replace(/[^A-Za-z0-9._-]/g, '-');
@@ -187,21 +270,20 @@ export async function destinationRunning(host: HostRef): Promise<boolean> {
 
 /**
  * Proyectos docker compose a PARAR antes de levantar el stack del hop (para liberar puertos/recursos).
- * Con `explicit` se para solo ese; si no, los que parezcan de Alfresco; si hay uno solo, ese.
+ * Con `explicit` se para solo ese; si no, el PROPIO stack de la migracion (`own`) y los que parezcan de
+ * Alfresco. NUNCA se para un proyecto ajeno por ser el unico en ejecucion (el host puede ser compartido).
  */
-export function stopTargets(projects: string[], explicit?: string): string[] {
+export function stopTargets(projects: string[], explicit?: string, own?: string): string[] {
   if (explicit && explicit.trim()) return [explicit.trim()];
-  const alfresco = projects.filter((p) => /alfresco/i.test(p));
-  if (alfresco.length > 0) return alfresco;
-  return projects.length === 1 ? projects : [];
+  return projects.filter((p) => p === own || /alfresco/i.test(p));
 }
 
-/** Para (down) los stacks que ya corren en el DESTINO antes de provisionar el hop. */
-export async function stopRunningStacks(host: HostRef, env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
+/** Para (down) los stacks del DESTINO que ocupan el hop (el propio y los de Alfresco); ver `stopTargets`. */
+export async function stopRunningStacks(host: HostRef, own?: string, env: NodeJS.ProcessEnv = process.env): Promise<string[]> {
   const listed = await runShell(host, 'docker compose ls -q');
   const projects = listed.exitCode === 0 ? listed.stdout.split('\n').map((s) => s.trim()).filter(Boolean) : [];
   const stopped: string[] = [];
-  for (const project of stopTargets(projects, env.MIGRATOR_DST_COMPOSE_PROJECT)) {
+  for (const project of stopTargets(projects, env.MIGRATOR_DST_COMPOSE_PROJECT, own)) {
     const result = await runShell(host, `docker compose -p "${project}" down --remove-orphans`);
     if (result.exitCode === 0) stopped.push(project);
   }
@@ -229,6 +311,14 @@ export async function registryLogin(host: HostRef, registry: string, user: strin
   if (result.exitCode !== 0) {
     throw new Error(`docker login ${registry} fallido: ${result.stderr.trim() || result.stdout.trim()}`);
   }
+}
+
+/**
+ * `true` si el DESTINO ya tiene la BD como bind en `<dataDir>/pg-data` (p.ej. el compose del hop previo):
+ * los hops siguientes deben montar LA MISMA carpeta, o arrancarian sobre un volumen vacio.
+ */
+export async function hasPgDataBind(host: HostRef, dataDir: string): Promise<boolean> {
+  return (await runShell(host, `test -d "${dataDir}/pg-data"`)).exitCode === 0;
 }
 
 /** Crea (en el DESTINO) las carpetas de datos de la version antes de montarlas. */
@@ -266,6 +356,27 @@ export async function ensureStackSecrets(workDir: string): Promise<Record<string
 }
 
 /**
+ * Keystore de METADATOS por defecto de las imagenes Docker de ACS (los valores publicos del compose
+ * oficial y del ORIGEN (7.1)). Deben ser LOS MISMOS que en el origen: las propiedades cifradas de la
+ * BD restaurada se descifran con este keystore. Sin ellos la imagen abre su keystore JCEKS como PKCS12 y
+ * Alfresco no arranca. Se ponen en `alfresco-global.properties` y, en los compose generados, tambien como
+ * propiedades JVM (`JAVA_TOOL_OPTIONS`), que es la via que documenta Alfresco.
+ */
+export const DEFAULT_KEYSTORE: Record<string, string> = {
+  'encryption.keystore.type': 'JCEKS',
+  'encryption.cipherAlgorithm': 'DESede/CBC/PKCS5Padding',
+  'encryption.keyAlgorithm': 'DESede',
+  'encryption.keystore.location': '/usr/local/tomcat/shared/classes/alfresco/extension/keystore/keystore',
+  'metadata-keystore.password': 'mp6yc0UD9e',
+  'metadata-keystore.aliases': 'metadata',
+  'metadata-keystore.metadata.password': 'oKIWzVdEdA',
+  'metadata-keystore.metadata.algorithm': 'DESede',
+};
+
+const keystoreJavaOpts = (): string =>
+  Object.entries(DEFAULT_KEYSTORE).map(([key, value]) => `-D${key}=${value}`).join(' ');
+
+/**
  * Contenido de `alfresco-global.properties` para el hop. La imagen 7.4 arranca con el fichero VACIO y los
  * `DB_*` de entorno no se aplican; sin esto Spring falla creando los beans de BD. El resto (search,
  * activemq) sigue por entorno en el compose.
@@ -279,6 +390,7 @@ export function globalProperties(request: ComposeRequest, secrets: Record<string
     `db.username=${user}`,
     `db.password=${secrets.POSTGRES_PASSWORD ?? ''}`,
     'dir.root=/usr/local/tomcat/alf_data',
+    ...Object.entries(DEFAULT_KEYSTORE).map(([key, value]) => `${key}=${value}`),
     '',
   ].join('\n');
 }
@@ -292,8 +404,19 @@ export async function writeStackConfig(host: HostRef, dataDir: string, content: 
   );
 }
 
+/** RAM asignada a Docker en el host (bytes); `undefined` si no se puede detectar. */
+export async function dockerMemTotal(host: HostRef): Promise<number | undefined> {
+  try {
+    const result = await runShell(host, `docker info --format '{{.MemTotal}}'`);
+    const bytes = Number.parseInt(result.stdout.trim(), 10);
+    return result.exitCode === 0 && Number.isFinite(bytes) && bytes > 0 ? bytes : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Prefijo de entorno con los secretos y un DOCKER_CONFIG limpio (evita el keychain de macOS por SSH). */
-function composeEnvPrefix(secrets: Record<string, string>): string {
+export function composeEnvPrefix(secrets: Record<string, string>): string {
   const env = Object.entries(secrets).map(([key, value]) => `${key}='${value}'`).join(' ');
   const dockerConfig = 'DOCKER_CONFIG=$(d=$(mktemp -d) && printf "{}" > "$d/config.json" && echo "$d")';
   return `${dockerConfig} ${env}`;
@@ -360,7 +483,7 @@ export async function upExternalInfra(host: HostRef, file: string): Promise<stri
 }
 
 /**
- * Nombre de proyecto docker compose VALIDO: solo `[a-z0-9_-]` (los puntos de `gadex-7.1.0` NO valen).
+ * Nombre de proyecto docker compose VALIDO: solo `[a-z0-9_-]` (los puntos de `acme-7.1.0` NO valen).
  */
 export const composeProjectName = (name: string): string => {
   const slugged = name
@@ -375,8 +498,12 @@ export const composeProjectName = (name: string): string => {
 /** Imagenes que referencia el compose del hop (para preflight de existencia en el registro). */
 export function composeImages(request: ComposeRequest): string[] {
   const images = [dbImage(request.database?.engine), activemqImage(request.acsVersion), searchImage(request.search?.engine)];
+  const stack = request.stack;
+  if (stack?.share || request.withShare) images.push(shareImage(stack ?? {}, request.acsVersion, request.edition));
+  if (stack?.transform) images.push(transformImage(stack, request.acsVersion));
+  if (stack?.proxy) images.push('nginx:stable-alpine');
+  // El repositorio va el ULTIMO (provision-hop lo usa para el control de pre-release).
   images.push(request.acsImage ?? repositoryImage(request.edition, request.acsVersion));
-  if (request.withShare) images.push(`${request.edition === 'EE' ? 'quay.io/alfresco/alfresco-share' : 'alfresco/alfresco-share'}:${request.acsVersion}`);
   return images;
 }
 
@@ -393,13 +520,23 @@ export async function missingImages(host: HostRef, images: string[]): Promise<st
 /** Servicios de INFRAESTRUCTURA (no Alfresco): se levantan primero, antes del restore. */
 export const INFRA_SERVICES = 'postgres activemq search';
 
-/** Escribe el compose en el DESTINO (para poder arrancar Alfresco mas tarde con `-f <fichero>`). */
-export async function writeComposeRemote(host: HostRef, remoteFile: string, content: string): Promise<void> {
+/**
+ * Escribe el compose en el DESTINO (para poder arrancar Alfresco mas tarde con `-f <fichero>`).
+ * NUNCA se sobrescribe un compose ajeno (puede ser el validado por el operador): solo si no existe, si
+ * lleva la cabecera GENERATED_MARKER o si es IDENTICO a la copia local que el migrator genero antes
+ * (`previous`, composes anteriores a la cabecera).
+ */
+export async function writeComposeRemote(host: HostRef, remoteFile: string, content: string, previous?: string): Promise<void> {
   const b64 = Buffer.from(content, 'utf8').toString('base64');
-  // NUNCA se sobrescribe un compose existente (puede ser el validado por el operador).
+  const conditions = [`[ ! -f "${remoteFile}" ]`, `head -1 "${remoteFile}" | grep -qF '${GENERATED_MARKER}'`];
+  if (previous) {
+    const prevB64 = Buffer.from(previous, 'utf8').toString('base64');
+    // `cmp -s` falla en cerrado (sin cmp o con diferencias => no se sobrescribe).
+    conditions.push(`{ t=$(mktemp) && printf '%s' '${prevB64}' | base64 -d > "$t" && cmp -s "$t" "${remoteFile}"; r=$?; rm -f "$t"; [ $r -eq 0 ]; }`);
+  }
   await runShell(
     host,
-    `mkdir -p "$(dirname "${remoteFile}")" && if [ ! -f "${remoteFile}" ]; then printf '%s' '${b64}' | base64 -d > "${remoteFile}"; fi`,
+    `mkdir -p "$(dirname "${remoteFile}")" && if ${conditions.join(' || ')}; then printf '%s' '${b64}' | base64 -d > "${remoteFile}"; fi`,
   );
 }
 
@@ -409,6 +546,8 @@ export async function provisionCompose(
   workDir: string,
   host: HostRef,
 ): Promise<{ file: string; started: boolean; detail: string }> {
+  // Copia local de la generacion anterior (si la hay): identifica un compose remoto como generado.
+  const previous = await readFile(path.join(workDir, `docker-compose-${slug(request.acsVersion)}.yml`), 'utf8').catch(() => undefined);
   const file = await writeCompose(request, workDir);
   const secrets = await ensureStackSecrets(workDir);
   const content = renderCompose(request);
@@ -416,18 +555,72 @@ export async function provisionCompose(
   // despues del restore (paso `schema-upgrade`), para que no cree una raiz espuria sobre una BD vacia.
   // Si hay `dataDir`, el compose queda escrito en el DESTINO para poder arrancar Alfresco luego con -f.
   let composeArg = '-f -';
+  if (request.dataDir && request.stack?.proxy) {
+    const conf = Buffer.from(proxyConfig(!!request.stack.share), 'utf8').toString('base64');
+    await runShell(host, `mkdir -p "${request.dataDir}/config" && printf '%s' '${conf}' | base64 -d > "${request.dataDir}/config/nginx.conf"`);
+  }
   if (request.dataDir) {
-    const remote = `${request.dataDir}/compose/docker-compose-${slug(request.acsVersion)}.yml`;
-    await writeComposeRemote(host, remote, content);
+    const remote = hopComposeFile(request.dataDir, request.acsVersion);
+    await writeComposeRemote(host, remote, content, previous);
     composeArg = `-f "${remote}"`;
   }
-  const command = `${composeEnvPrefix(secrets)} docker compose ${composeArg} -p "${composeProjectName(request.projectName)}" up -d ${INFRA_SERVICES}`;
+  const services = [INFRA_SERVICES, ...stackInfraServices(request.stack)].join(' ');
+  const command = `${composeEnvPrefix(secrets)} docker compose ${composeArg} -p "${composeProjectName(request.projectName)}" up -d ${services}`;
   const result = await runShellWithInput(host, command, request.dataDir ? '' : content);
   if (result.exitCode !== 0) {
     throw new Error(`docker compose up (infra) fallido (exit=${result.exitCode}): ${result.stderr}`);
   }
+  // Con `dataDir` Alfresco lee la contraseña de alfresco-global.properties (secreto del stack): la BD
+  // conserva la de su inicializacion, asi que se alinea (idempotente).
+  if (request.dataDir) {
+    const composeCmd = `${composeEnvPrefix(secrets)} docker compose ${composeArg} -p "${composeProjectName(request.projectName)}"`;
+    await alignDbPassword(host, composeCmd, request.database?.user ?? 'alfresco', secrets.POSTGRES_PASSWORD ?? '');
+  }
   return { file, started: true, detail: result.stdout.trim() };
 }
+
+/**
+ * Alinea la contraseña del rol de BD con el secreto del stack. `POSTGRES_PASSWORD` solo se aplica al
+ * INICIALIZAR el cluster: si `pg-data` se creo con otra (compose del operador, un hop previo), Alfresco
+ * falla con "password authentication failed". Dentro del contenedor el socket local es `trust`, asi que
+ * se fija con `ALTER ROLE` sin conocer la anterior. Espera a que Postgres acepte conexiones.
+ */
+export async function alignDbPassword(
+  host: HostRef,
+  composeCmd: string,
+  user: string,
+  password: string,
+  attempts = 30,
+): Promise<void> {
+  if (!/^[A-Za-z0-9_]+$/.test(user) || password.includes("'")) {
+    throw new Error('usuario/contraseña de BD con caracteres no soportados para ALTER ROLE');
+  }
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const ready = await runShell(host, `${composeCmd} exec -T postgres pg_isready -U ${user}`);
+    if (ready.exitCode === 0) break;
+    if (attempt === attempts) throw new Error('Postgres del DESTINO no acepta conexiones');
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  const sql = `ALTER ROLE ${user} WITH PASSWORD '${password}'`;
+  const result = await runShellWithInput(host, `${composeCmd} exec -T postgres psql -v ON_ERROR_STOP=1 -U ${user} -d postgres`, sql);
+  if (result.exitCode !== 0) {
+    throw new Error(`no se pudo alinear la contraseña de BD: ${result.stderr.trim() || result.stdout.trim()}`);
+  }
+}
+
+/** Compose del hop EN EL DESTINO (directorio de version): `<dataDir>/compose/docker-compose-<hop>.yml`. */
+export const hopComposeFile = (dataDir: string, version: string): string =>
+  `${dataDir}/compose/docker-compose-${slug(version)}.yml`;
+
+/** Version del tag de una imagen (`repo:7.4.2` -> `7.4.2`); `undefined` si el tag no es una version. */
+export const acsImageVersion = (image: string): string | undefined => {
+  const tag = image.includes(':') ? image.slice(image.lastIndexOf(':') + 1) : '';
+  return /^\d+\.\d+/.test(tag) ? tag : undefined;
+};
+
+/** Mismo mayor.minor (7.4 == 7.4.2). */
+const sameMinorVersion = (a: string, b: string): boolean =>
+  compareTuple(parseVersion(a).slice(0, 2), parseVersion(b).slice(0, 2)) === 0;
 
 export function projectToComposeRequest(
   project: ProjectConfig,
@@ -448,6 +641,12 @@ export function projectToComposeRequest(
     memory,
     dataDir,
     pgBind,
-    ...(project.target.acsImage ? { acsImage: project.target.acsImage } : {}),
+    // El stack de la version FINAL solo en el ultimo hop (los intermedios: repositorio + infra).
+    ...(project.target.stack && sameMinorVersion(acsVersion, project.target.version) ? { stack: project.target.stack } : {}),
+    // `target.acsImage` aplica al hop cuya version casa con el TAG de la imagen (7.4.2 -> hop 7.4); si el
+    // tag no es una version, a la version FINAL. Los demas hops usan la suya (<version>.0).
+    ...(project.target.acsImage && sameMinorVersion(acsVersion, acsImageVersion(project.target.acsImage) ?? project.target.version)
+      ? { acsImage: project.target.acsImage }
+      : {}),
   };
 }

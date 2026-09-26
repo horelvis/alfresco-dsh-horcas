@@ -194,7 +194,7 @@ Basta con una de estas frases; NO pidas un prompt detallado.
 - **"ayuda"** o primer mensaje del chat: llama a \`migrator_help\` (frases de ejemplo) y espera.
 
 - **Antes de provisionar** (\`migrator_provision execute=true\`): pide al usuario la **carpeta del DESTINO**
-  (\`dstDir\`), entendida **EN EL HOST DESTINO** (por SSH; p.ej. \`horelvis@192.168.100.51\`), **no una ruta local**.
+  (\`dstDir\`), entendida **EN EL HOST DESTINO** (por SSH; p.ej. \`usuario@192.0.2.11\`), **no una ruta local**.
   Si no está en \`MIGRATOR_DST_DIR\`, pregúntala. Ahi se montan el content store (\`<dstDir>/alf-data\`) y la BD
   (\`<dstDir>/pg-data\`) de la version; el migrator crea esas carpetas en el destino antes de levantar.
   El DESTINO se provisiona **por hop**: si aparece un stack previo (p.ej. un 26.2) **parado**, es
@@ -214,6 +214,43 @@ es lo que permite que **otro chat** continúe sin repetir el trabajo.
 sobre la BD ya migrada (auto-update de esquema) → \`verify-target\` comprueba **readiness + que la raiz
 resuelve**. NUNCA arranques Alfresco antes del restore: crearia una raiz espuria y quedaria desalineado
 (root 404 pese a ready 200).
+
+**Composicion por hop (ruta multi-hop, compose GENERADO con \`target.dataDir\`):** el plugin calcula el hop
+que toca desde \`.migrator/hops.jsonl\` (7.4 → 25.3 → 26.2). Cada hop es UN \`migrator_run_steps\`:
+- primer hop (destino VACIO, todo en UN run): \`provision-hop\` → \`backup-source-db\` → \`copy-content\` → \`restore-target-db\` → \`schema-upgrade\` → \`smoke-boot\`
+  (con el destino vacio la guarda de hops bloquea cualquier run que NO empiece por \`provision-hop\`);
+- hops siguientes (la BD y el content store ya estan en el DESTINO): \`provision-hop\` → \`schema-upgrade\` → \`smoke-boot\`;
+- hop FINAL: igual que los siguientes + \`reindex\` → \`verify-target\`.
+\`provision-hop\` va SIEMPRE primero (pone el DESTINO en la version del hop; la guarda previa no aplica y
+\`smoke-boot\` la verifica despues, fail-closed). El hop solo queda registrado si el run termina OK.
+**Stack de la version FINAL (cada migracion es distinta: lo decide el humano).** En la planificacion ejecuta
+\`migrator_source_stack\` (inventario del despliegue del origen: Share, transform, LDAP, proxy y customizaciones
+AMPs/JARs/config). Si el YAML no define \`target.stack\`, PREGUNTA con \`ask_user_question\` que desplegar en la
+version final (Share, transform, proxy, publicHost) y si hay una carpeta EN EL DESTINO con los modulos YA
+migrados (\`target.stack.extensions.repo|share\`, subcarpetas amps/ jars/ config/); pide al humano que lo fije en
+el YAML. Sin respuesta (headless): solo repositorio y avisalo. Los hops intermedios NO llevan stack ni modulos.
+Las customizaciones del origen se DETECTAN y AVISAN (item de modulos en WARN): el migrador no las porta.
+Para aplicar el stack a un destino que ya esta en la version final: \`provision-hop\` → \`schema-upgrade\` →
+\`smoke-boot\` → \`verify-target\` (el hop pendiente es la version final).
+
+**Modelos de contenido:** el JAR de modelos lo aporta el INSTALADOR humano (\`target.modelsJar\`, ruta local):
+\`provision-hop\` lo valida (contexto \`alfresco/extension/*-context.xml\` + modelos) y lo monta en TODOS los hops. El
+migrador NO fabrica modelos. En el PRIMER hop \`provision-hop\` consulta (solo lectura) que namespaces PROPIOS usan los
+nodos del origen: si alguno no esta cubierto por el JAR ni declarado en \`target.modelsNotRequired\`, BLOQUEA con la lista.
+Ante ese bloqueo: explica los namespaces al humano y pide el JAR (en el workspace, p.ej. ./models/<proyecto>-models.jar)
+o su decision de no migrarlos; no lo rodees. Los modulos migrados de la version final no deben volver a registrar esos
+modelos.
+
+**Documento de migracion:** al cerrar (o ante un bloqueo) ejecuta \`migrator_report\`: deja en el workspace el
+informe con ejecucion, tiempos estimado vs real, checklist con evidencia, decisiones, rollback y pendientes.
+
+**Para VER el estado real del destino usa \`migrator_target_state\`** (contenedores, directorio de version, content
+store, pg-data, version REST), no \`ssh\`/\`docker\` a mano.
+
+**NUNCA operes el DESTINO por \`bash\`/\`ssh\`** (docker, ficheros, BD): todo cambio va por \`migrator_run_steps\`.
+Si un paso falla, diagnostica en solo lectura, anota el hito y reintenta con \`resume=true\`; si no puedes
+avanzar sin tocar el destino a mano, PARA y avisa al humano con el bloqueo concreto.
+Con \`target.composeFile\` (compose del operador) NO uses \`provision-hop\`: el operador cambia la imagen.
 
 **El reindex NO se hace por hop.** Solo se regenera el indice cuando el DESTINO ya esta en la version
 **FINAL** del proyecto (26.2); en hops intermedios (7.4, 25.3) se OMITE siempre (el plugin lo impone). No
@@ -246,7 +283,7 @@ hay que habilitar \`MIGRATOR_MODE=write\` y aprobar; no lo asumas.
 4. **Ensayo en clone/TEST**: \`migrator_run_steps\` + \`migrator_rehearsal_record\`. Si falla, restaurar y reanudar (\`resume=true\`).
 5. **Paridad a PROD**: \`migrator_environment_parity\`; sin ensayo validado o con drift BLOCKER, PROD se bloquea.
 6. **Backup no destructivo**: \`migrator_backup\` (BD + store + manifiesto SHA-256). El origen nunca se modifica.
-7. **Ejecucion en destino**: preflight-target -> backup-source-db -> copy-content -> restore-target-db -> schema-upgrade -> reindex -> verify-target.
+7. **Ejecucion en destino**: preflight-target -> backup-source-db -> copy-content; despues, por hop: provision-hop -> (restore-target-db solo en el primero) -> schema-upgrade -> smoke-boot; en el hop final + reindex -> verify-target.
 8. **Post**: coherencia con dangling=0, reindex verificado, conteos/checksums/ACL, origen retenido para rollback.
 
 Reglas duras: el ORIGEN es inmutable; las escrituras van solo al DESTINO y con aprobacion; los indices de busqueda se regeneran, nunca se migran; no ejecutar CDC sin REPLICA IDENTITY; **nunca migrar de una version a otra NO soportada** (se respeta la cadena de hops en orden; \`UNSUPPORTED\` se rechaza y \`REQUIRES_VALIDATION\` exige validacion del fabricante).

@@ -129,3 +129,20 @@ export async function recordCompletedHop(state: string, project: ProjectConfig, 
   const pending = nextHop(hops, new Set(progress.map((p) => p.to)));
   if (pending) await recordHop(state, project.project, pending);
 }
+
+/**
+ * Version del hop que toca (la que el DESTINO debe tener en este ciclo). Con todos los hops hechos (o
+ * ruta de un solo hop), la version final.
+ */
+export function pendingHopVersion(hops: Hop[], completed: Set<string>, finalVersion: string): string {
+  return nextHop(hops, completed)?.to ?? finalVersion;
+}
+
+/**
+ * La guarda de version PREVIA (el DESTINO ya en la version del hop) no aplica si la composicion EMPIEZA
+ * por `provision-hop`: ese paso es el que pone el DESTINO en la version del hop, y `smoke-boot` lo
+ * verifica despues (fail-closed). En cualquier otro orden la guarda se mantiene.
+ */
+export function hopGuardApplies(steps: string[]): boolean {
+  return steps[0] !== 'provision-hop';
+}

@@ -24,11 +24,16 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
 
 # 1) Configuracion local del WORKSPACE actual (nunca la del repo del producto): `.env` en el
 #    directorio desde el que se invoca. Copia "$ROOT/.env.example" a "./.env" y rellena.
+#    Lo EXPLICITO manda: una variable ya exportada al invocar (p.ej. MIGRATOR_APPROVAL=allowlist) NO la
+#    pisa el `.env` (se restauran las exportadas previas tras cargarlo).
 if [ -f "$PWD/.env" ]; then
+  _preset=$(export -p)
   set -a
   # shellcheck disable=SC1091
   . "$PWD/.env"
   set +a
+  eval "$_preset"
+  unset _preset
 else
   echo "[alfresco-dsh-horcas] AVISO: no hay .env en el workspace ($PWD)." >&2
   echo "[alfresco-dsh-horcas] copia $ROOT/.env.example a $PWD/.env y rellena (origen, destino, modelo)." >&2

@@ -69,18 +69,15 @@ físico del destino* entre mayores (nunca el data directory del origen).
 | Paso del ciclo | Tool / mecanismo | Estado |
 |---|---|---|
 | 1. Directorio de versión + copia | — | **Pendiente** (hoy `copy-content` copia origen→destino directo). |
-| 2. Proveer la versión del salto | `migrator_provision` | Parcial: genera un stack **genérico**; no tu `alfresco-dst`. |
-| 3. Smoke test | `migrator_verify_target` / `migrator_mount_check` | Parcial: solo readiness/conectividad. |
+| 2. Proveer la versión del salto | `provision-hop` (en `migrator_run_steps`) | OK: para el stack anterior y levanta la infra del hop con `<dataDir>/compose/docker-compose-<hop>.yml`, conservando BD y content store. |
+| 3. Smoke test | `smoke-boot` | OK: versión del DESTINO == hop, raíz resuelve y log sin errores de esquema (fail-closed). |
 | 4. Reconfigurar al dato final | — | **Pendiente**. |
-| 5. Auto-update de esquema | `schema-upgrade` | Parcial: **no-op** sin `MIGRATOR_SCHEMA_UPGRADE_CMD` (lo orquesta el stack). |
+| 5. Auto-update de esquema | `schema-upgrade` | OK: arranca `alfresco` con el compose del hop y espera (`MIGRATOR_SCHEMA_UPGRADE_TIMEOUT_S`, defecto 1800 s); corta si el log muestra fallo de esquema. |
 | 6. Check + siguiente | `verify-target`, `migrator_schema_check` | OK. |
 | PG de versión distinta | `restore-target-db` (`pg_restore`) | Parcial: vía lógica; sin paso de `pg_upgrade`. |
 | Guarda de hops | `domain/hops.ts` (`MIGRATOR_DST_BASE_URL`) | OK (fail-closed). |
 
 ## Pendiente de automatizar (candidatos)
 
-- `provision-hop`: levantar la versión del salto sobre el directorio de versión.
-- `smoke-boot`: arrancar/verificar/parar el hop antes de apuntar al dato final.
 - `db-version-migrate`: `pg_upgrade` **o** restore lógico según la mayor de PG.
-- `schema-upgrade`: **orquestar** el auto-update en lugar de delegar en el stack.
 - Modo `provision` que **parchee el tag de imagen** en el `compose.yaml` real (opt-in).

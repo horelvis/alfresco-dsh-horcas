@@ -9,9 +9,9 @@ describe('loadProject', () => {
   });
 
   it('resuelve un nombre de proyecto a <nombre>.yaml (workspace y data/projects)', () => {
-    const candidates = projectCandidates('gadex-7.1.0', '/ws', '/data');
-    expect(candidates).toContain('/ws/gadex-7.1.0.yaml');
-    expect(candidates).toContain('/data/gadex-7.1.0.yaml');
+    const candidates = projectCandidates('acme-7.1.0', '/ws', '/data');
+    expect(candidates).toContain('/ws/acme-7.1.0.yaml');
+    expect(candidates).toContain('/data/acme-7.1.0.yaml');
     // una ruta relativa tambien se prueba bajo el directorio de datos del plugin
     expect(projectCandidates('data/projects/example.yaml', '/ws', '/data')).toContain(
       '/data/data/projects/example.yaml',
@@ -22,7 +22,7 @@ describe('loadProject', () => {
 
   it('carga un proyecto existente', async () => {
     const project = await loadProject('data/projects/example.yaml');
-    expect(project.project).toBe('gadex-7.1.0');
+    expect(project.project).toBe('acme-7.1.0');
     expect(project.source.version).toBe('7.1.0');
   });
 
@@ -39,5 +39,19 @@ describe('loadProject', () => {
       'project: demo\nsource:\n  version: "7.1.0"\ntarget:\n  version: "26.2"\n  composeFile: /home/op/infra/alfresco/docker-compose.yml\n',
     );
     expect(project.target.composeFile).toBe('/home/op/infra/alfresco/docker-compose.yml');
+  });
+});
+
+describe('target.modelsJar relativo', () => {
+  it('se resuelve respecto a la carpeta del YAML (workspace), no al cwd del proceso', async () => {
+    const { mkdtemp, writeFile } = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { loadProject } = await import('../src/domain/project-config.js');
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'ws-'));
+    const yaml = 'project: p\nsource: { version: "7.1.0", baseUrl: "http://s", database: { engine: postgresql }, contentStore: { path: /s } }\ntarget: { version: "26.2", modelsJar: ./models/m.jar }\n';
+    await writeFile(path.join(dir, 'p.yaml'), yaml);
+    const project = await loadProject(path.join(dir, 'p.yaml'), '/');
+    expect(project.target.modelsJar).toBe(path.join(dir, 'models/m.jar'));
   });
 });

@@ -7,12 +7,12 @@ Ensayo real de migración **7.1.0 → 7.4 → 25.3 → 26.2** sobre el destino `
 agente del plugin sobre el arnés fork.
 
 ## Repos y rutas
-- Plugin: `/Volumes/Macintosh SSD - Daten/Users/horelvis/git/dsh-alfresco-migrator` (git `horelvis/dsh-alfresco-migrator`, rama `main`).
-- Arnés fork: `/Users/horelvis/git/deepseek-harness` (`horelvis/deepseek-harness`, `master`, `0.1.6-alpha.2`).
-- Workspace: `/Users/horelvis/git/gadex-migration` (`gadex-7.1.0.yaml`, `.env`, `.migrator/`).
-- Origen: gadex 7.1.0 CE; Postgres container `gadex-alfresco-docker-git-postgres-1`;
-  store `/Users/horelvis/git/gadex-alfresco-docker-git/data/alf-repo-data/contentstore`.
-- Destino: `http://192.168.100.51:8080/alfresco` — ACS **26.2.0 CE** (`alfresco-dst`).
+- Plugin: `<ruta-local>/dsh-alfresco-migrator` (git `horelvis/dsh-alfresco-migrator`, rama `main`).
+- Arnés fork: `<ruta-local>/deepseek-harness` (`horelvis/deepseek-harness`, `master`, `0.1.6-alpha.2`).
+- Workspace: `<workspace-del-proyecto>` (`<proyecto>.yaml`, `.env`, `.migrator/`).
+- Origen: ACS 7.1.0 CE; contenedor Postgres del stack de origen;
+  store `<ruta-del-origen>/alf-data/contentstore`.
+- Destino: `http://192.0.2.11:8080/alfresco` — ACS **26.2.0 CE** (`alfresco-dst`).
 - Backup existente: `.migrator/backup/` (dump BD + `contentstore/` ~1,9 GB + manifiesto SHA-256).
 
 ## Modelo LLM (efectivo)
@@ -36,8 +36,8 @@ agente del plugin sobre el arnés fork.
 
 ## Cómo lanzar
 ```
-cd /Users/horelvis/git/gadex-migration
-DSH_BIN="node /Users/horelvis/git/deepseek-harness/apps/cli/lib/bin.js" \
+cd <workspace-del-proyecto>
+DSH_BIN="node <ruta-local>/deepseek-harness/apps/cli/lib/bin.js" \
 MIGRATOR_MODE=write alfresco-dsh-horcas web --no-open --port 8087
 ```
 - **Guardrail**: permite lectura, `bash`/`pwsh`, `write`/`edit` y orquestación; deniega solo la red.

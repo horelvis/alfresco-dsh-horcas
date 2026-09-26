@@ -8,6 +8,7 @@ import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 import { runBackup } from '../domain/backup.js';
 import { stateDir } from '../domain/experience.js';
+import { recordEvidence } from '../domain/evidence.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 const json = <T>(value: T): never => JSON.parse(JSON.stringify(value)) as never;
@@ -51,6 +52,10 @@ export function registerBackupTools(ctx: Context): void {
           host: { name: 'local' },
           dryRun: args.execute !== true,
         });
+        if (!result.dryRun) {
+          await recordEvidence(stateDir(), project.project, 'backup-store', result.complete ? 'OK' : 'FAIL',
+            `${result.artifacts.map((a) => `${a.kind}:${a.fileCount}f/${a.sizeBytes}B`).join(' ')} en ${result.backupDir}`);
+        }
         return json(result);
       },
     }),

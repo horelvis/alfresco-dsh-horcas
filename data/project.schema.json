@@ -145,6 +145,7 @@
         "api": { "$ref": "#/$defs/secretRef" },
         "database": { "$ref": "#/$defs/database" },
         "contentStore": { "$ref": "#/$defs/contentStore" },
+        "deployDir": { "type": "string", "description": "Carpeta LOCAL del despliegue del ORIGEN (docker-compose.yml + Dockerfiles): se inventarian servicios y customizaciones (AMPs/JARs/config). Solo lectura." },
         "search": { "$ref": "#/$defs/search" },
         "nodeCount": { "type": "integer", "minimum": 0, "default": 0 },
         "auditCount": { "type": "integer", "minimum": 0, "default": 0 },
@@ -163,6 +164,27 @@
         "baseUrl": { "type": "string", "format": "uri", "description": "URL REST del DESTINO (para verificar version y salud)." },
         "dataDir": { "type": "string", "description": "Carpeta base EN EL HOST DESTINO para los datos del hop (content store en <dataDir>/alf-data y BD en <dataDir>/pg-data)." },
         "acsImage": { "type": "string", "description": "Imagen EXACTA del repositorio en el DESTINO (p.ej. alfresco/alfresco-content-repository-community:7.4.2); manda sobre edition+version." },
+        "modelsJar": { "type": "string", "description": "Ruta LOCAL del JAR de modelos de contenido aportado por el INSTALADOR (contexto alfresco/extension/*-context.xml + modelos). Se valida y se monta en TODOS los hops; el migrador no fabrica modelos." },
+        "modelsNotRequired": { "type": "array", "items": { "type": "string" }, "description": "URIs de namespace EN USO en el origen que el humano decide no migrar (p.ej. herramientas de administracion de terceros). Sin esto, un namespace propio en uso no cubierto por modelsJar BLOQUEA el primer hop." },
+        "stack": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Stack de la version FINAL (decision humana; el arnes lo pregunta). Los hops intermedios son repositorio + infra.",
+          "properties": {
+            "share": { "type": "boolean", "description": "Desplegar Share (UI clasica) en /share." },
+            "transform": { "type": "boolean", "description": "Desplegar transform-core-aio (miniaturas, previsualizaciones, extraccion de texto)." },
+            "proxy": { "type": "boolean", "description": "Proxy nginx: entrada unica en 8080 para /alfresco y /share." },
+            "publicHost": { "type": "string", "description": "Host con el que acceden los usuarios (URLs de Share/CSRF/AOS). Defecto localhost." },
+            "shareImage": { "type": "string", "description": "Imagen exacta de Share (defecto: la del compose oficial de la version)." },
+            "transformImage": { "type": "string", "description": "Imagen exacta de transform-core-aio." },
+            "extensions": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Carpetas EN EL HOST DESTINO con las extensiones YA MIGRADAS a la version final (subcarpetas opcionales amps/, jars/, config/). Se construye una imagen derivada.",
+              "properties": { "repo": { "type": "string" }, "share": { "type": "string" } }
+            }
+          }
+        },
         "composeFile": { "type": "string", "description": "Ruta EN EL HOST DESTINO (otra maquina) de un compose YA VALIDADO. Si se define, el migrator lo usa tal cual (docker compose -f) y NO genera ni escribe el suyo." },
         "database": { "$ref": "#/$defs/database" },
         "contentStore": { "$ref": "#/$defs/contentStore" },
@@ -194,6 +216,7 @@
       "additionalProperties": false,
       "properties": {
         "changeRatePerDay": { "type": "number", "minimum": 0, "default": 0.01 },
+        "cutoverWindowHours": { "type": "number", "minimum": 0, "description": "Ventana de corte disponible en PROD (horas): decide la politica de reindex (online / metadatos primero / pre-indexado + delta)." },
         "throughputOverrides": {
           "type": "object",
           "additionalProperties": false,

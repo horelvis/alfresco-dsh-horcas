@@ -28,7 +28,7 @@ export function substitute(template: string, values: Record<string, string>): st
   return result;
 }
 
-function runLocal(command: string, args: string[], stdin?: string): Promise<ExecResult> {
+function runLocal(command: string, args: string[], stdin?: string | Buffer): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
@@ -62,7 +62,8 @@ export async function runShell(host: HostRef, command: string, signal?: AbortSig
 }
 
 /** Como `runShell`, pero envia `stdin` al proceso (p. ej. `docker compose -f - up -d` con el YAML). */
-export async function runShellWithInput(host: HostRef, command: string, stdin: string, signal?: AbortSignal): Promise<ExecResult> {
+/** `stdin` binario (Buffer) para artefactos como el dump de `pg_dump -Fc`: NUNCA pasarlos como texto. */
+export async function runShellWithInput(host: HostRef, command: string, stdin: string | Buffer, signal?: AbortSignal): Promise<ExecResult> {
   const { cmd, args } = invocation(host, command);
   void signal;
   return runLocal(cmd, args, stdin);

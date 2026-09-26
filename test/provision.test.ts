@@ -40,10 +40,15 @@ describe('compose', () => {
     expect(yaml).toContain('jdbc:postgresql://postgres:5432/alfresco');
   });
 
-  it('7.x usa la serie ActiveMQ 5.18.7 y repo con patch .0', () => {
+  it('7.x usa la serie ActiveMQ 5.18.7 y el ultimo parche conocido del repo (data/images.yaml)', () => {
     const yaml = renderCompose({ ...request, acsVersion: '7.4' });
     expect(yaml).toContain('alfresco/alfresco-activemq:5.18.7-jre17-rockylinux8');
-    expect(yaml).toContain('alfresco/alfresco-content-repository-community:7.4.0');
+    expect(yaml).toContain('alfresco/alfresco-content-repository-community:7.4.2');
+  });
+
+  it('version sin parche conocido: <version>.0; version con parche: tal cual', () => {
+    expect(renderCompose({ ...request, acsVersion: '25.1' })).toContain('alfresco/alfresco-content-repository-community:25.1.0');
+    expect(renderCompose({ ...request, acsVersion: '7.4.1' })).toContain('alfresco/alfresco-content-repository-community:7.4.1');
   });
 
   it('acsImage (exacta) manda sobre edition+version', () => {
@@ -123,8 +128,8 @@ describe('manualCommandsForFile (compose del operador, sin generar ni copiar)', 
 
 describe('composeProjectName', () => {
   it('quita los puntos (nombre de proyecto invalido) y normaliza', () => {
-    expect(composeProjectName('gadex-7.1.0')).toBe('gadex-7-1-0');
-    expect(composeProjectName('Gadex 7.1.0')).toBe('gadex-7-1-0');
+    expect(composeProjectName('acme-7.1.0')).toBe('acme-7-1-0');
+    expect(composeProjectName('Acme 7.1.0')).toBe('acme-7-1-0');
     expect(composeProjectName('...')).toBe('alfresco');
   });
 });
@@ -179,9 +184,13 @@ describe('stopTargets (que stacks parar antes de provisionar)', () => {
     expect(stopTargets(['alfresco-dst', 'web', 'alfresco-demo'])).toEqual(['alfresco-dst', 'alfresco-demo']);
   });
 
-  it('sin coincidencias, solo si hay un unico proyecto', () => {
-    expect(stopTargets(['web'])).toEqual(['web']);
+  it('nunca para un proyecto ajeno aunque sea el unico en ejecucion', () => {
+    expect(stopTargets(['otra-app'])).toEqual([]);
     expect(stopTargets(['web', 'api'])).toEqual([]);
+  });
+
+  it('sin explicito, para el propio stack de la migracion', () => {
+    expect(stopTargets(['otra-app', 'acme-710'], undefined, 'acme-710')).toEqual(['acme-710']);
   });
 });
 

@@ -1,0 +1,9 @@
+# Ultimo PARCHE conocido de la imagen del repositorio por version (DATOS, no codigo).
+# Los tags genericos (7.4, 25.3, 26.2) NO existen: sin entrada aqui se usa <version>.0.
+# Solo parches verificados (usados en un ensayo o publicados en el compose oficial de acs-deployment).
+# `target.acsImage` manda sobre esta tabla para el hop cuya version casa con su tag.
+schemaVersion: 1
+repositoryCommunity:
+  "7.4": "7.4.2"
+  "25.3": "25.3.0"
+  "26.2": "26.2.0"

@@ -77,11 +77,11 @@ describe('politica de seguridad', () => {
   it('el motivo es estructurado (title/details/body) reutilizando las descripciones', () => {
     const prov = writeReason(
       'migrator_provision',
-      { project: '/p/gadex.yaml', execute: true },
+      { project: '/p/acme.yaml', execute: true },
       'Provisiona el DESTINO en Docker Compose.',
     );
     expect(prov.title).toContain('Provisiona el DESTINO en Docker Compose');
-    expect(prov.details.join(' ')).toContain('/p/gadex.yaml');
+    expect(prov.details.join(' ')).toContain('/p/acme.yaml');
     expect(prov.details.join(' ')).toContain('EXECUTE');
     expect(prov.body).toContain('ORIGEN');
     expect(prov.reason).not.toContain('\n');

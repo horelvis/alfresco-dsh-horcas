@@ -35,6 +35,11 @@ export interface ProjectConfig {
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; via?: string; volume?: string };
     search?: { engine?: string };
+    /**
+     * Carpeta LOCAL del despliegue del ORIGEN (docker-compose + Dockerfiles): de ahi se inventarian sus
+     * servicios (Share, transform, LDAP, proxy) y customizaciones (AMPs/JARs/config). Solo lectura.
+     */
+    deployDir?: string;
   };
   target: {
     version: string;
@@ -52,6 +57,18 @@ export interface ProjectConfig {
      * toca el despliegue del operador.
      */
     composeFile?: string;
+    /**
+     * Stack de la version FINAL (lo decide el humano; el arnes lo pregunta): Share, transform, proxy y
+     * carpetas EN EL DESTINO con las extensiones migradas. Los hops intermedios son repositorio + infra.
+     */
+    stack?: import('./final-stack.js').FinalStack;
+    /**
+     * JAR de MODELOS DE CONTENIDO (ruta LOCAL) aportado por el INSTALADOR: se valida y se monta en TODOS
+     * los hops. El migrador no fabrica modelos.
+     */
+    modelsJar?: string;
+    /** Namespaces (URI) en uso en el origen que el humano decide NO migrar (quedan documentados). */
+    modelsNotRequired?: string[];
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; volume?: string };
     search?: { engine?: string };
@@ -96,6 +113,7 @@ export function parseProjectYaml(text: string): ProjectConfig {
       database: source.database as ProjectDatabase | undefined,
       contentStore: source.contentStore as ProjectConfig['source']['contentStore'],
       search: source.search as ProjectConfig['source']['search'],
+      deployDir: source.deployDir ? String(source.deployDir).replace(/^~/, process.env.HOME ?? '~') : undefined,
     },
     target: {
       version: String(target.version ?? ''),
@@ -105,6 +123,9 @@ export function parseProjectYaml(text: string): ProjectConfig {
       dataDir: target.dataDir ? String(target.dataDir) : undefined,
       acsImage: target.acsImage ? String(target.acsImage) : undefined,
       composeFile: target.composeFile ? String(target.composeFile) : undefined,
+      stack: target.stack as ProjectConfig['target']['stack'],
+      modelsJar: target.modelsJar ? String(target.modelsJar).replace(/^~/, process.env.HOME ?? '~') : undefined,
+      modelsNotRequired: Array.isArray(target.modelsNotRequired) ? (target.modelsNotRequired as unknown[]).map(String) : undefined,
       database: target.database as ProjectDatabase | undefined,
       contentStore: target.contentStore as ProjectConfig['target']['contentStore'],
       search: target.search as ProjectConfig['target']['search'],
@@ -164,7 +185,12 @@ export async function loadProject(projectPath?: string, cwd: string = process.cw
       `Proyecto no encontrado. Probado: ${candidates.join(', ')}. Crea el YAML con migrator_wizard o corrige la ruta.`,
     );
   }
-  return parseProjectYaml(await readFile(file, 'utf8'));
+  const project = parseProjectYaml(await readFile(file, 'utf8'));
+  // Rutas LOCALES relativas del YAML (p.ej. ./models/x.jar): respecto a la carpeta del propio YAML (workspace).
+  if (project.target.modelsJar && !path.isAbsolute(project.target.modelsJar)) {
+    project.target.modelsJar = path.resolve(path.dirname(file), project.target.modelsJar);
+  }
+  return project;
 }
 
 export function projectSchemaPath(): string {

@@ -62,11 +62,11 @@ describe('verificacion de paridad origen->destino', () => {
 
   it('dbConfigFromYaml usa el host del YAML (no localhost) y el password del entorno', () => {
     const cfg = dbConfigFromYaml(
-      { host: '192.168.100.58', port: 5432, name: 'alfresco', user: 'alfresco' },
+      { host: '192.0.2.10', port: 5432, name: 'alfresco', user: 'alfresco' },
       'DST',
       { MIGRATOR_DST_DB_PASSWORD: 'x' },
     );
-    expect(cfg.host).toBe('192.168.100.58');
+    expect(cfg.host).toBe('192.0.2.10');
     expect(cfg.password).toBe('x');
   });
 

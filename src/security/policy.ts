@@ -35,6 +35,11 @@ export const READ_ONLY_TOOLS = [
   'migrator_validate',
   'migrator_distinct_check',
   'migrator_verify_target',
+  // Inventario del despliegue del origen (lectura de ficheros locales) y documento de migracion (estado local).
+  'migrator_source_stack',
+  // Estado real del destino (solo lectura; contenedor efimero con montaje :ro para carpetas de otros uid).
+  'migrator_target_state',
+  'migrator_report',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',
@@ -256,8 +261,36 @@ export function policyOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): Poli
   return { guardrail, allowTools, readOnly };
 }
 
-/** Guard monotono: bloquea escritura que apunte al origen (inmutable). */
+const SHELL_TOOLS = new Set(['bash', 'pwsh', 'shell', 'exec']);
+// docker que MUTA (contenedores, volumenes, imagenes); `ps`/`logs`/`inspect`/`config`/`images` siguen permitidos.
+const DOCKER_MUTATION =
+  /\bdocker(?:\s+compose\b[^|;&]*?)?\s+(?:up|down|rm|rmi|restart|stop|start|kill|create|run|exec|cp|pull|update|prune|volume\s+(?:rm|prune|create)|network\s+(?:rm|prune|create)|system\s+prune)\b/;
+// Mutacion de ficheros/BD en un host REMOTO (dentro de un ssh).
+const REMOTE_FILE_MUTATION = /\b(?:rm|mv|cp|chown|chmod|mkdir|tee|truncate|dd|keytool|ln|rsync)\b|\bsed\s+-i\b|\b(?:ALTER|DROP|INSERT|UPDATE|DELETE|TRUNCATE|CREATE)\b|[^0-9&]>\s*(?!\/dev\/null|&)/;
+
+/**
+ * Comando de shell que CAMBIA el DESTINO (por ssh) o un stack Docker (el origen vive en el Docker local):
+ * esas escrituras solo pueden ir por las tools del migrator (aprobacion, checkpoints, guardas). El
+ * diagnostico en solo lectura (logs, ps, inspect, cat, curl) sigue permitido.
+ */
+export function shellMutationReason(command: string): string | undefined {
+  const remote = /\b(?:ssh|scp)\b/.test(command);
+  if (DOCKER_MUTATION.test(command)) {
+    return `Operacion Docker que modifica ${remote ? 'el DESTINO' : 'un stack (el ORIGEN es inmutable)'} por shell: usa migrator_run_steps / migrator_provision`;
+  }
+  if (remote && (/\bscp\b/.test(command) || REMOTE_FILE_MUTATION.test(command))) {
+    return 'Modificacion del DESTINO por ssh: usa las tools del migrator (migrator_run_steps); si no hay paso para ello, para y avisa al humano';
+  }
+  return undefined;
+}
+
+/** Guard monotono: bloquea escritura que apunte al origen (inmutable) y cambios por shell fuera del migrator. */
 export function guardReason(exec: ToolExec): string | undefined {
+  if (SHELL_TOOLS.has(exec.name)) {
+    const args = exec.arguments as { command?: unknown; script?: unknown } | undefined;
+    const command = typeof args?.command === 'string' ? args.command : typeof args?.script === 'string' ? args.script : '';
+    return command ? shellMutationReason(command) : undefined;
+  }
   if (!isWrite(exec.name)) return undefined;
   const args = JSON.stringify(exec.arguments ?? {});
   if (/"origin"\s*:\s*true/.test(args) || /MIGRATOR_WRITE_ORIGIN/.test(args)) {
@@ -277,6 +310,9 @@ async function projectStage(exec: ToolExec): Promise<string | undefined> {
 
 export function installSecurity(ctx: SecurityContext, options: PolicyOptions = policyOptionsFromEnv()): void {
   ctx.on('tools/pre-execute', async (exec, next) => {
+    // Cambios del DESTINO/stacks por shell: denegados siempre (tambien si el guard del registro no ve bash).
+    const shell = SHELL_TOOLS.has(exec.name) ? guardReason(exec) : undefined;
+    if (shell) return { kind: 'deny', reason: shell };
     // Reutilizamos la descripcion registrada de la tool (sin hardcodear el motivo).
     const description = ctx.tools.get?.(exec.name, exec.agent)?.description;
     const stage = isWrite(exec.name) ? await projectStage(exec) : undefined;

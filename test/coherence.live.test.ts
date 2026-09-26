@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkCoherence, explainMissing } from '../src/domain/coherence.js';
 
-const storeRoot = process.env.MIGRATOR_LIVE_STORE ?? '/Users/horelvis/git/gadex-alfresco-docker-git/data/alf-repo-data/contentstore';
+const storeRoot = process.env.MIGRATOR_LIVE_STORE ?? '';
 const hasDb = Boolean(process.env.MIGRATOR_SRC_DB_URL || process.env.MIGRATOR_SRC_DB_PASSWORD);
 
 describe.runIf(hasDb)('coherence + explain (live)', () => {

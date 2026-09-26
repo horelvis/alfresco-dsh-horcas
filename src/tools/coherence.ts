@@ -4,6 +4,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { workspaceCwd } from '../infra/session.js';
 import { checkCoherence, coherenceBlocked, explainMissing } from '../domain/coherence.js';
 import { loadProject } from '../domain/project-config.js';
+import { recordEvidence } from '../domain/evidence.js';
+import { stateDir } from '../domain/experience.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
 
@@ -51,7 +53,12 @@ export function registerCoherenceTools(ctx: Context): void {
         const project = await loadProject(undefined, cwd);
         const report = await checkCoherence(await storeRoot(undefined, cwd));
         const policy = project.migration.coherencePolicy ?? 'FAIL_ON_DANGLING';
-        return { ...report, policy, blocked: coherenceBlocked(policy, report.dangling) };
+        const blocked = coherenceBlocked(policy, report.dangling);
+        // dangling>0 aceptado por politica WARN => WARN (se reporta al humano), nunca OK.
+        const status = report.dangling === 0 && report.verdict !== 'FAIL' ? 'OK' : blocked ? 'FAIL' : 'WARN';
+        await recordEvidence(stateDir(), project.project, 'coherence', status,
+          `refs=${report.refs} dangling=${report.dangling} orphans=${report.orphans} sizeMismatch=${report.sizeMismatch} verdict=${report.verdict} policy=${policy}`);
+        return { ...report, policy, blocked };
       },
     }),
   );

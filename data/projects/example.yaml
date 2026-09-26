@@ -1,7 +1,7 @@
-# Analisis read-only del Alfresco actual (stack local gadex-alfresco-docker-git).
+# Analisis read-only del Alfresco actual (stack local de ejemplo).
 # Origen: ACS 7.1.0 Community, Solr 6, PostgreSQL, content store FS.
 # El migrador NO escribe en el origen (modo plan sin --execute).
-project: gadex-7.1.0
+project: acme-7.1.0
 # clone | test | prod. PROD exige un ensayo validado (clone/TEST) sin drift de bloqueo.
 stage: test
 
@@ -9,9 +9,9 @@ access:
   mode: ssh                       # enrutado: el ORIGEN (via jdbc) sigue local; el DESTINO va por SSH
   hosts:
     dst-app:
-      host: 192.168.100.51
+      host: 192.0.2.11
       port: 22
-      user: horelvis              # usuario SSH real de la maquina destino
+      user: deploy              # usuario SSH de la maquina destino
       auth: { type: key, keyFile: ~/.ssh/migrator_dst }   # clave dedicada del migrador (sin passphrase)
 
 source:
@@ -27,7 +27,7 @@ source:
     user: alfresco
   contentStore:
     type: FS
-    path: /Users/horelvis/git/gadex-alfresco-docker-git/data/alf-repo-data/contentstore
+    path: /srv/acme-origen/alf-data/contentstore
     via: local
   search:
     engine: solr
@@ -38,18 +38,18 @@ target:
   edition: CE
   deployment: compose
   # URL REST del DESTINO (verificacion de version del hop / salud). Override: MIGRATOR_DST_BASE_URL.
-  baseUrl: http://192.168.100.51:8080/alfresco
+  baseUrl: http://192.0.2.11:8080/alfresco
   # Compose YA VALIDADO que vive EN EL HOST DESTINO (otra maquina). Si se define, el migrator lo usa
   # tal cual (`docker compose -f <fichero>`) y NO genera ni escribe el suyo (no toca tu despliegue).
   # Servicios esperados: postgres/activemq/search (infra) y alfresco (repo). Ejemplo:
-  # composeFile: /home/horelvis/infra/alfresco/docker-compose.yml
+  # composeFile: /srv/alfresco/docker-compose.yml
   database:
     engine: postgresql
   contentStore:
     type: FS
     # Si el destino guarda el store en un volumen Docker, usa `volume` (el plugin resuelve su
     # mountpoint real en el host con `docker volume inspect`) y `path` como subruta del volumen:
-    #   volume: gadex-7.1.0_alfresco-content   # nombre real: `docker volume ls`
+    #   volume: acme-7-1-0_alfresco-content   # nombre real: `docker volume ls`
     #   path: contentstore                     # dir.contentstore dentro de dir.root
     path: /alf_data-26/contentstore
   search:

@@ -57,7 +57,7 @@ Escritura (marcadas `ask`; requieren aprobación humana; solo destino):
 - `migrator_run_steps` — ejecuta la composición de pasos que decide el agente (dry-run por defecto; `resume`).
 
 ## Pasos de migración (el agente compone, no un pipeline fijo)
-`preflight-target`, `backup-source-db`, `copy-content`, `restore-target-db`, `schema-upgrade`, `reindex`,
+`preflight-target`, `provision-hop`, `backup-source-db`, `copy-content`, `restore-target-db`, `schema-upgrade`, `smoke-boot`, `reindex`,
 `verify-target`. Cada paso es idempotente, se registra en `.migrator/checkpoints.jsonl` y respeta los
 overrides `MIGRATOR_DB_DUMP_CMD`/`RESTORE_CMD`/`REINDEX_CMD`/`MIGRATOR_DST_PROVISION`.
 
@@ -98,7 +98,7 @@ La seguridad **no depende del prompt**: está impuesta en código determinista. 
 | 7 | **Ensayo → PROD** | PROD exige ensayo validado; drift `BLOCKER` bloquea | `tools/write.ts`, `tools/execution.ts`, `domain/experience.ts` | — |
 | 8 | **Política de coherencia** | `FAIL_ON_DANGLING` bloquea; `WARN`/`REPAIR` no | `tools/coherence.ts`, `domain/coherence.ts` | `migration.coherence.policy` |
 | 9 | **Reviewer LLM** | Anonimización reversible; ante duda **ABSTAIN** (nunca aprueba solo) | `domain/reviewer.ts`, `domain/privacy.ts` | `MIGRATOR_AI_ANONYMIZATION` |
-| 10 | **Secretos** | Compose sin secretos embebidos; `.env` ignorado por git | `domain/provision.ts`, `.gitignore` | — |
+| 10 | **Secretos** | Compose sin secretos embebidos; `.env` ignorado por git; **la salida de TODAS las tools (incl. `bash`/`read`) se redacta antes del LLM** (valores de `stack.env`/entorno + patrones `password=`, `user:pass@`) | `domain/provision.ts`, `security/redact.ts`, `.gitignore` | — |
 | 11 | **Recuperación tras interrupción** | Nunca reintentar a ciegas un paso con efectos: verificar estado y `resume` | `domain/checkpoints.ts`, `tools/execution.ts` | `migrator_run_status`, `resume` |
 | 12 | **Guarda de hops** | Ruta multi-hop: no se ejecuta si el DESTINO no está en la versión del hop que toca (verificado por REST, fail-closed) | `domain/hops.ts`, `tools/execution.ts` | `MIGRATOR_DST_BASE_URL` |
 
