@@ -49,3 +49,15 @@ describe('autoproteccion: el agente no modifica el plugin ni el arnes', () => {
     expect(selfModificationReason('npm test')).toBeUndefined();
   });
 });
+
+describe('redireccion: no confundir => / -> / >= con escribir', () => {
+  it('las consultas de lectura con funciones flecha no son escritura en el plugin', async () => {
+    const { selfModificationReason, shellMutationReason } = await import('../src/security/policy.js');
+    const read = `node -e 'const pg = require("/srv/code/dsh-alfresco-migrator/node_modules/pg"); (async () => { const r = await c.query("select 1"); r.rows.forEach((x) => console.log(x)); })()'`;
+    expect(selfModificationReason(read)).toBeUndefined();
+    expect(shellMutationReason("ssh h 'awk \"$1 >= 3\" /var/log/x'")).toBeUndefined();
+    // una redireccion real sigue siendo escritura
+    expect(selfModificationReason('echo x > /srv/code/dsh-alfresco-migrator/src/a.ts')).toBeDefined();
+    expect(selfModificationReason('echo x >> /srv/code/dsh-alfresco-migrator/src/a.ts')).toBeDefined();
+  });
+});

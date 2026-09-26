@@ -267,7 +267,7 @@ const FILE_WRITE_TOOLS = new Set(['write', 'edit', 'multi_edit', 'apply_patch'])
 const DOCKER_MUTATION =
   /\bdocker(?:\s+compose\b[^|;&]*?)?\s+(?:up|down|rm|rmi|restart|stop|start|kill|create|run|exec|cp|pull|update|prune|volume\s+(?:rm|prune|create)|network\s+(?:rm|prune|create)|system\s+prune)\b/;
 // Mutacion de ficheros/BD en un host REMOTO (dentro de un ssh).
-const REMOTE_FILE_MUTATION = /\b(?:rm|mv|cp|chown|chmod|mkdir|tee|truncate|dd|keytool|ln|rsync)\b|\bsed\s+-i\b|\b(?:ALTER|DROP|INSERT|UPDATE|DELETE|TRUNCATE|CREATE)\b|[^0-9&]>\s*(?!\/dev\/null|&)/;
+const REMOTE_FILE_MUTATION = /\b(?:rm|mv|cp|chown|chmod|mkdir|tee|truncate|dd|keytool|ln|rsync)\b|\bsed\s+-i\b|\b(?:ALTER|DROP|INSERT|UPDATE|DELETE|TRUNCATE|CREATE)\b|(?:^|[^0-9&=<>\-])>>?(?![=>])\s*(?!\/dev\/null|&)/;
 
 /**
  * Comando de shell que CAMBIA el DESTINO (por ssh) o un stack Docker (el origen vive en el Docker local):
@@ -282,7 +282,7 @@ const REMOTE_FILE_MUTATION = /\b(?:rm|mv|cp|chown|chmod|mkdir|tee|truncate|dd|ke
 export const PROTECTED_DIRS = ['dsh-alfresco-migrator', 'deepseek-harness', 'alfresco-dsh-horcas'];
 const protectedPath = new RegExp(`(^|[\\s"'=:(/~])[^\\s"']*/(${PROTECTED_DIRS.join('|')})(/|["'\\s]|$)`);
 const SELF_WRITE =
-  /\b(?:npm|pnpm|yarn|npx|tsc|tsdown|node\s+\S*build|rm|mv|cp|rsync|chmod|chown|tee|truncate|touch|ln|mkdir|install)\b|\bsed\s+-i\b|\bgit(?:\s+-[Cc]\s+\S+)*\s+(?:commit|checkout|reset|restore|stash|rebase|merge|pull|push|apply|am|clean|switch)\b|[^0-9&]>\s*(?!\/dev\/null|&)/;
+  /\b(?:npm|pnpm|yarn|npx|tsc|tsdown|node\s+\S*build|rm|mv|cp|rsync|chmod|chown|tee|truncate|touch|ln|mkdir|install)\b|\bsed\s+-i\b|\bgit(?:\s+-[Cc]\s+\S+)*\s+(?:commit|checkout|reset|restore|stash|rebase|merge|pull|push|apply|am|clean|switch)\b|(?:^|[^0-9&=<>\-])>>?(?![=>])\s*(?!\/dev\/null|&)/;
 
 /** Motivo de bloqueo si el comando modifica el plugin o el arnes (autoproteccion). */
 export function selfModificationReason(command: string): string | undefined {
