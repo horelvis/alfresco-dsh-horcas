@@ -1,6 +1,7 @@
 # Handoff — dsh-alfresco-migrator
 
-Fecha: 2026-09-20 · Último commit: `9fd57b4` (main, pusheado).
+Fecha: 2026-09-27 · Último commit: `ab58803` (main, pusheado). Tests: **309 passed / 4 skipped**.
+(Handoff anterior: 2026-09-20, commit `9fd57b4`; cubría 47 commits ya resueltos.)
 
 ## Objetivo
 Ensayo real de migración **7.1.0 → 7.4 → 25.3 → 26.2** sobre el destino `alfresco-dst`, guiado por el
@@ -8,7 +9,7 @@ agente del plugin sobre el arnés fork.
 
 ## Repos y rutas
 - Plugin: `<ruta-local>/dsh-alfresco-migrator` (git `horelvis/dsh-alfresco-migrator`, rama `main`).
-- Arnés fork: `<ruta-local>/deepseek-harness` (`horelvis/deepseek-harness`, `master`, `0.1.6-alpha.2`).
+- Arnés fork: `<ruta-local>/deepseek-harness` (`horelvis/deepseek-harness`, `master`).
 - Workspace: `<workspace-del-proyecto>` (`<proyecto>.yaml`, `.env`, `.migrator/`).
 - Origen: ACS 7.1.0 CE; contenedor Postgres del stack de origen;
   store `<ruta-del-origen>/alf-data/contentstore`.
@@ -40,43 +41,56 @@ cd <workspace-del-proyecto>
 DSH_BIN="node <ruta-local>/deepseek-harness/apps/cli/lib/bin.js" \
 MIGRATOR_MODE=write alfresco-dsh-horcas web --no-open --port 8087
 ```
-- **Guardrail**: permite lectura, `bash`/`pwsh`, `write`/`edit` y orquestación; deniega solo la red.
-- **Sandbox forzado `DSH_PERMISSION_MODE=read-only`**: toda escritura/borrado se bloquea y **escala a aprobación humana**.
-- `~/.dsh/settings.yaml`: `ui-chat.transcriptView: compact`, `llm-deepseek` con `thinking: disabled` + `reasoningEffort: off`.
+- **Guardrail solo-migración** (`MIGRATOR_GUARDRAIL=true`): permite lectura/orquestación; deniega `bash`/
+  escritura de ficheros/web. Con `MIGRATOR_MODE=write`: toda escritura del migrator pasa por aprobación.
+- **`/help`** (comando humano del arnés): muestra la ayuda de arranque del migrador sin depender del LLM.
+- `~/.dsh/settings.yaml`: `ui-chat.transcriptView: compact`, `llm-deepseek` con `thinking: disabled` +
+  `reasoningEffort: off`.
 
-## Hecho hoy
-- `reasoningEffort: off` verificado (sin CoT).
-- **Conducta operativa** en system prompt (sin narración intermedia): `src/prompt.ts`.
-- `migrator_dangling_explain`: dice explícitamente **"binario=AUSENTE"** (`present:false`/`missing:true`).
-- **Discovery con fallback**: `discoverRest` prueba la API v1 y, si 404, `/api/discovery` (26.2 solo expone esta última).
-- **Salida lossless JSON** en `run_steps`/`run_status` (el arnés rechazaba `undefined`).
-- **Backup dry-run** detecta artefactos preexistentes (antes `CONFIG` siempre salía "a escribir").
-- `bash`/`pwsh`/`write` permitidos + sandbox `read-only` (todo borrado pasa por humano).
-- Tests: **182 passed / 4 skipped**.
-- **Documentado el upgrade físico por hop** (`docs/upgrade-por-hop.md` + sección en `README.md`): ciclo
-  directorio-de-versión → provisionar versión del salto → smoke → parar → reconfigurar al dato final →
-  auto-update → check, **incluida la migración de versión mayor de PostgreSQL** (`pg_restore` lógico,
-  `pg_upgrade`, `pgautoupgrade`). Pendiente de automatizar: `provision-hop`, `smoke-boot`,
-  `db-version-migrate` y orquestar `schema-upgrade`.
+## Hecho desde el handoff anterior (47 commits, 21–27 sep)
+- **Ensayo multi-hop guiado por el arnés** (`f8a2a29`): `provision-hop` → `backup-source-db` → `copy-content`
+  → `restore-target-db` (solo primer hop) → `schema-upgrade` → `smoke-boot`; hop final + `reindex` →
+  `verify-target`. La guarda de hops y el orden los **impone el plugin**, no el prompt.
+- **`provision-hop` / `smoke-boot` / `schema-upgrade` automatizados**: provision levanta **solo
+  infraestructura**; `schema-upgrade` arranca Alfresco sobre la BD ya migrada; `verify-target` comprueba
+  readiness + que la raíz resuelve (evita el `root 404` de arrancar Alfresco antes del restore).
+- **`target.composeFile`** (`65794c3`, `ab58803`): si el operador provee un compose del DESTINO, el migrator
+  lo usa tal cual y **no genera ni escribe ninguno**; fusiona los secretos del stack en el `.env` junto a su
+  compose sin pisar lo suyo, y rearranca la infra. Sin `dstDir` ni compose nuevo.
+- **Reindex solo en la versión FINAL** (`1346681`): nunca por hop; impuesto en el plugin.
+- **Seguridad / autoprotección** (`82fa0a0`): el agente no puede modificar, compilar ni versionar el plugin
+  ni el arnés (shell y tools de fichero); los pasos fallidos no se esquivan. Corregido falso positivo de la
+  guarda con `=>`/`->`/`>=` (`ce6576c`).
+- **Auditoría en 3 niveles** (`1cd85cb`, `1aa12b8`):
+  - **Nivel 0** — `migrator_audit` (`domain/audit.ts`): hechos deterministas desde el estado durable
+    (`checkpoints`, `hops`, `experience`, `journal`, `evidence`, checklist) → `FAIL`/`WARN`/`INFO`;
+    `.migrator/audit.jsonl`. Un FAIL bloquea declarar `validado=si`.
+  - **Nivel 1** — revisor independiente con contexto fresco; el prompt empieza por `[[MIGRATOR-AUDITOR]]`
+    (o teammate `auditor`), que **fuerza solo-lectura en el plugin** (enforcer determinista).
+  - **Nivel 2** — puerta del arnés `harness/auditor-gate.mjs`: gate `tools/pre-execute` que **deniega**
+    `migrator_report` y el `reindex` final si no hay auditoría reciente con 0 FAIL.
+- **Memoria/continuidad**: `journal` durable + `migrator_resume` ("estado de la migración"), `migrator_help`,
+  **lecciones COMPARTIDAS entre proyectos** (`migrator_lessons`/`_lesson_add` + inyección en system prompt),
+  `session_search` en el patch del perfil.
+- **Provisión endurecida**: tags exactos, rechazo de imágenes pre-release, login de registro (EE/quay.io),
+  preflight de imágenes, proyecto compose válido (sin puntos), secretos del stack, `target.database.container`,
+  rutas del HOST DESTINO (`dstDir`/`MIGRATOR_DST_DIR`), modo `manual` con comandos para sudo.
+- **Datos de dominio**: Solr eliminado en 26.x (CE y EE); alcance de upgrade solo 7.x+; `7.1.0→7.4` SOPORTADO
+  (lo que bloquea es saltarse 7.4).
 
-## Contexto entre chats (session_search)
-El agente puede leer sesiones previas del mismo workspace (`session_search`, `session_event_read`,
-`session_trace`). `install.sh` lo configura en el patch del perfil (`~/.dsh/profiles/<perfil>/cordis.patch.yml`):
-sobrescribe `session-query-sqlite` con `openAt: first-search` + índice durable, e inserta
-`@deepseek-ai/dsh-tool-session-query` por ruta absoluta al fork (el perfil resuelve bundles desde el dsh
-global). El guardrail ya permite esas tools. Pendiente: `journal` + `migrator_resume` (estado durable
-"dónde estamos").
+## Pendiente
+1. **Operativo (principal)**: ejecutar la **campaña de ensayo end-to-end** sobre el entorno real y validar la
+   paridad antes del corte a PROD (ver "ensayo → producción" en `README.md`).
+2. **Coherencia**: el `exp.conf.zip` colgante (binario ausente = **pérdida real**) → restaurar desde backup
+   sobre copia y repetir FULL hasta que deje de ser FAIL.
+3. **`db-version-migrate`** (candidato): `pg_upgrade` **o** restore lógico según la mayor de PG
+   (hoy la BD se migra siempre por restore lógico `pg_restore`, cross-versión).
+4. **Reconfigurar al dato final** (paso 4 del ciclo en `docs/upgrade-por-hop.md`): automático.
+5. Modo `provision` que **parchee el tag de imagen** en el `compose.yaml` real (opt-in).
+6. **Stack de la versión FINAL** y **JAR de modelos**: los aporta el humano en el YAML
+   (`target.stack`, `target.modelsJar`); el migrator los valida/monta pero no los fabrica.
 
-## Bloqueado / decisiones pendientes
-1. El destino está en **26.2**, pero la **guarda de hops** exige el destino en **7.4** para el primer hop
-   (bloquea el salto directo). → **Desplegar el destino en 7.4** antes del primer hop.
-2. Decidir: (a) almacenamiento/datastore, (b) estrategia **C2/D2** vs **C5/D1**, (c) `MIGRATOR_DB_RESTORE_CMD`
-   por `docker exec` (Postgres del destino no publicado).
-3. **7.1.0 → 7.4 es SOPORTADO** (no requiere validacion del fabricante): lo que bloquea es **saltarse 7.4**
-   (la cadena de hops lo impone). El caso con Hyland solo aplicaria a orígenes 6.x o anteriores.
-4. Coherencia: `exp.conf.zip` colgante (binario ausente = **pérdida real**) → restaurar desde backup sobre
-   copia y repetir FULL hasta que deje de ser FAIL.
-
-## Nota del operador
-El agente no detectaba el backup ya existente en `.migrator`: corregido (el dry-run ahora marca `CONFIG`
-como `preexisting`; DB y content store ya se detectaban).
+## Principio de diseño
+**Hechos en el código, juicio en el agente**: tools = hechos (parseo, igualdad demostrable, SQL read-only);
+skills + LLM = juicio; guardas = código determinista (origen inmutable, aprobación, autoprotección, hops,
+auditoría). El origen **nunca** se modifica; el DESTINO se opera **solo** vía `migrator_run_steps`.
