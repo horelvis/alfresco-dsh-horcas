@@ -41,6 +41,7 @@ import {
 } from './provision.js';
 import { computeAlfrescoMemory } from './memory.js';
 import { modelsCoverage, NAMESPACES_IN_USE_SQL, validateModelsJar, type ContentModel, type ModelsCoverage } from './models.js';
+import { missingPrefixes, prefixesFromModels, resolveReindexStrategy, searchCommunityReindexScript } from './reindex.js';
 import { connectSource, dbConfigFromYaml, queryRows } from '../infra/pg.js';
 import { recordEvidence } from './evidence.js';
 import { stackLateServices } from './final-stack.js';
@@ -636,7 +637,40 @@ const smokeBoot: StepDefinition = {
   },
 };
 
-/** `reindex`: regenera el indice de busqueda en el destino (Reindexing app / Solr tracking). */
+/**
+ * Comprueba el `prefixes-file` del batch indexer contra los namespaces propios de los modelos (JAR del
+ * instalador). El fichero REEMPLAZA el mapa embebido: un namespace ausente deja nodos sin indexar EN
+ * SILENCIO, por eso un fichero aportado que no los cubra BLOQUEA el reindex.
+ */
+async function prefixMapNote(ctx: StepContext): Promise<{ ok: boolean; detail: string }> {
+  const jar = ctx.project.target.modelsJar;
+  if (!jar) return { ok: true, detail: 'prefix-map: sin target.modelsJar (no se validan namespaces propios)' };
+  const check = await validateModelsJar(jar).catch(() => undefined);
+  if (!check?.ok) return { ok: true, detail: 'prefix-map: JAR de modelos no validable' };
+  const required = prefixesFromModels(check.models);
+  const file = process.env.MIGRATOR_REINDEX_PREFIXES_FILE;
+  if (!file) {
+    return {
+      ok: true,
+      detail: `prefix-map: ${required.length} namespaces propios; el fichero del indexador debe ser el mapa COMPLETO (incluye los de Alfresco): genera con model-ns-prefix-mapping y define MIGRATOR_REINDEX_PREFIXES_FILE para validarlo`,
+    };
+  }
+  try {
+    const provided = JSON.parse(await readFile(file, 'utf8')) as Record<string, string>;
+    const missing = missingPrefixes(required, Object.entries(provided).map(([uri, prefix]) => ({ uri, prefix: String(prefix) })));
+    if (missing.length) {
+      return {
+        ok: false,
+        detail: `prefix-map INCOMPLETO (${file}): faltan ${missing.map((m) => `${m.prefix}=${m.uri}`).join(', ')}; esos nodos NO se indexarian. Regenera el mapa con el addon model-ns-prefix-mapping del repositorio y reintenta.`,
+      };
+    }
+    return { ok: true, detail: `prefix-map: ${required.length} namespaces propios cubiertos por ${file}` };
+  } catch (error) {
+    return { ok: false, detail: `prefix-map: no se pudo leer ${file}: ${describeError(error)}` };
+  }
+}
+
+/** `reindex`: regenera el indice de busqueda en el destino (batch-indexing por watermark / Reindexing app / Solr). */
 const reindex: StepDefinition = {
   id: 'reindex',
   short: 'Regenera el indice de busqueda (solo en la version final)',
@@ -644,8 +678,11 @@ const reindex: StepDefinition = {
   writes: true,
   async run(ctx, params) {
     const override = process.env.MIGRATOR_REINDEX_CMD;
+    const engine = (ctx.project.target.search?.engine ?? 'solr').toUpperCase();
+    const edition = (ctx.project.target.edition ?? 'CE').toUpperCase();
+    const strategy = resolveReindexStrategy(engine, ctx.project.target.search?.version ?? '', ctx.project.target.version, edition);
     if (ctx.dryRun) {
-      return skipped('reindex', 'dry-run');
+      return skipped('reindex', `dry-run: ${strategy.kind}`);
     }
     // NUNCA reindexar en hops intermedios: solo cuando el DESTINO ya esta en la version FINAL del proyecto.
     const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
@@ -662,26 +699,44 @@ const reindex: StepDefinition = {
         `reindex SOLO en la version final (${ctx.project.target.version}); el DESTINO esta en ${detected.version}: se omite en hops intermedios`,
       );
     }
-    if (!override) {
-      // En la version FINAL el indice es obligatorio: saltarlo daria un OK falso del hop final. Se falla
-      // con el bloqueo concreto para que lo resuelva el humano.
-      const engine = (ctx.project.target.search?.engine ?? 'solr').toUpperCase();
-      const edition = (ctx.project.target.edition ?? 'CE').toUpperCase();
-      return fail(
-        'reindex',
-        `BLOQUEO (decision humana): no hay mecanismo de reindexado para ${edition} ${ctx.project.target.version} con ${engine}. ` +
-          (engine === 'SOLR'
-            ? 'Define MIGRATOR_REINDEX_CMD con el reindexado de Solr (tracking/borrado de cores).'
-            : edition === 'EE'
-              ? 'Define MIGRATOR_REINDEX_CMD con la Alfresco Reindexing app (Search Enterprise).'
-              : 'La Reindexing app (Search Enterprise) es de Enterprise: en CE hay que decidir el motor de busqueda del destino y definir MIGRATOR_REINDEX_CMD.'),
-      );
+    if (override) {
+      const values = {
+        prefixesFile: String(params.prefixesFile ?? ''),
+        dbUrl: String(params.dbUrl ?? destinationDbUrl(ctx.project)),
+      };
+      return requireResult('reindex', await runShell(ctx.destination, substitute(override, values)));
     }
-    const values = {
-      prefixesFile: String(params.prefixesFile ?? ''),
-      dbUrl: String(params.dbUrl ?? destinationDbUrl(ctx.project)),
-    };
-    return requireResult('reindex', await runShell(ctx.destination, substitute(override, values)));
+    // Search Community (CE 26.2+): el indice se regenera por SONDEO. NO indexa el historico por si solo:
+    // hay que sembrar el cursor (watermark) en el primer commit de la BD y mantener maxGapAge=0 hasta el presente.
+    if (strategy.kind === 'SEARCH_COMMUNITY') {
+      const prefixes = await prefixMapNote(ctx);
+      if (!prefixes.ok) return fail('reindex', prefixes.detail);
+      const db = ctx.project.target.database;
+      const script = searchCommunityReindexScript({
+        project: composeProjectName(ctx.project.project),
+        dbContainer: process.env.MIGRATOR_DST_PG_CONTAINER ?? db?.container,
+        dbUser: db?.user ?? 'alfresco',
+        dbName: db?.name ?? 'alfresco',
+        dbPassword: process.env.MIGRATOR_DST_DB_PASSWORD ?? process.env.MIGRATOR_SRC_DB_PASSWORD,
+        searchContainer: process.env.MIGRATOR_DST_SEARCH_CONTAINER,
+        searchUrl: process.env.MIGRATOR_DST_SEARCH_URL,
+        stateIndex: process.env.MIGRATOR_REINDEX_STATE_INDEX,
+      });
+      const outcome = requireResult('reindex', await runShell(ctx.destination, script));
+      // El comando puede llevar la password de la BD: no se expone.
+      return outcome.ok
+        ? { ...outcome, command: undefined, detail: `${outcome.detail} · ${prefixes.detail} · maxGapAge=0 requerido hasta alcanzar el presente` }
+        : { ...outcome, command: undefined };
+    }
+    // Solr / Search Enterprise: cada instalacion usa su comando; en la version FINAL el indice es
+    // obligatorio, asi que se falla con el bloqueo concreto en vez de dar un OK falso.
+    return fail(
+      'reindex',
+      `BLOQUEO (decision humana): no hay mecanismo automatico de reindexado para ${edition} ${ctx.project.target.version} con ${engine}. ` +
+        (engine === 'SOLR'
+          ? 'Define MIGRATOR_REINDEX_CMD con el reindexado de Solr (tracking/borrado de cores).'
+          : 'Define MIGRATOR_REINDEX_CMD con la Alfresco Reindexing app (Search Enterprise).'),
+    );
   },
 };
 

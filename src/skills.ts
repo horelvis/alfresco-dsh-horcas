@@ -266,6 +266,22 @@ compose, sin pisar lo suyo, y rearranca la infra); \`schema-upgrade\` tambien lo
 **FINAL** del proyecto (26.2); en hops intermedios (7.4, 25.3) se OMITE siempre (el plugin lo impone). No
 preguntes por reindex en un hop intermedio.
 
+**Como se regenera en 26.x CE (Search Community, \`elasticsearch\`/\`opensearch\`):** el indice lo mantiene
+\`alfresco-elasticsearch-batch-indexing\` por SONDEO (30 s); NO indexa el historico por si solo: arranca en
+\`now - overlap\`. El paso \`reindex\` del plugin **siembra el cursor (watermark \`reindexByDate\`) en el primer
+commit de la BD** (\`min(commit_time_ms)\`) en el indice de estado \`alfresco-reindex-state\`, para que recorra
+el backlog migrado. Requisitos que decide/verifica el humano (no los cambia el migrator):
+- \`alfresco.reindex.continuous.maxGapAge=0\` MIENTRAS recorre el historico (con el defecto de 24 h, un cursor
+  sembrado antes de esa edad se DESCARTA en silencio); al alcanzar el presente, volverlo a \`24h\` y
+  \`continuous.maxWindow\` a \`30m\`.
+- \`alfresco.reindex.prefixes-file\` (o \`-D\` en \`JAVA_OPTS\`) con el mapa **COMPLETO** de namespaces
+  incluyendo los PROPIOS (reemplaza, no amplia, los 60 de Alfresco). Un namespace ausente deja nodos SIN
+  indexar en silencio: genera el mapa desde el repositorio (addon \`model-ns-prefix-mapping\`) y, si lo dejas
+  en el workspace, apunta \`MIGRATOR_REINDEX_PREFIXES_FILE\` para que el paso lo VALIDE (si faltan, BLOQUEA).
+- Indices: principal \`alfresco\`, estado \`alfresco-reindex-state\`, fallos \`alfresco-reindex-dead-letter\`.
+  Comprueba el avance del cursor (\`lastSuccessfulToTimeEpochMs\`) y revisa el dead-letter (recuperacion manual).
+En EE la Reindexing app es one-shot; si no hay comando, define \`MIGRATOR_REINDEX_CMD\`.
+
 **No crees directorios ni ficheros de trabajo con \`bash\`** (el sandbox es read-only): el migrador crea su
 directorio de run (\`.migrator/<runId>/\`) y sus artefactos con sus propias tools.
 

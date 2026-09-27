@@ -71,7 +71,7 @@ export interface ProjectConfig {
     modelsNotRequired?: string[];
     database?: ProjectDatabase;
     contentStore?: { type?: string; path?: string; volume?: string };
-    search?: { engine?: string };
+    search?: { engine?: string; version?: string };
   };
   migration: {
     contentStrategy?: string;

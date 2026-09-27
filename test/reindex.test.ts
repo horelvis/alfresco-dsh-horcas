@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isSearchCommunity,
+  minCommitTimeSql,
+  missingPrefixes,
   parseModelNamespaces,
   parseTotalIndexed,
+  prefixesFromModels,
   prefixesJson,
   reindexingAppCommand,
   resolveReindexStrategy,
+  searchCommunityReindexScript,
   verifyIndexed,
+  watermarkSeedBody,
+  WATERMARK_DOC_ID,
 } from '../src/domain/reindex.js';
 
 describe('reindex strategy', () => {
@@ -14,11 +21,60 @@ describe('reindex strategy', () => {
     expect(resolveReindexStrategy('SOLR', '6.6.0', '7.4').kind).toBe('SOLR_TRACKING');
   });
 
-  it('Search Enterprise -> Reindexing app online con el jar de la version destino', () => {
-    const strategy = resolveReindexStrategy('OPENSEARCH', '7.1.0', '26.2');
+  it('Search Enterprise (EE) -> Reindexing app online con el jar de la version destino', () => {
+    const strategy = resolveReindexStrategy('OPENSEARCH', '7.1.0', '26.2', 'EE');
     expect(strategy.kind).toBe('REINDEXING_APP');
     expect(strategy.tool).toBe('alfresco-elasticsearch-reindexing-26.2-app.jar');
     expect(strategy.online).toBe(true);
+  });
+
+  it('Search Community (CE 26.2+) -> batch indexer por watermark', () => {
+    const strategy = resolveReindexStrategy('OPENSEARCH', '7.1.0', '26.2', 'CE');
+    expect(strategy.kind).toBe('SEARCH_COMMUNITY');
+    expect(strategy.tool).toContain('alfresco-elasticsearch-batch-indexing');
+  });
+
+  it('Search Community solo aplica a CE 26.2+', () => {
+    expect(isSearchCommunity('26.2', 'CE', 'OPENSEARCH')).toBe(true);
+    expect(isSearchCommunity('26.2', 'EE', 'OPENSEARCH')).toBe(false);
+    expect(isSearchCommunity('25.3', 'CE', 'OPENSEARCH')).toBe(false);
+    expect(isSearchCommunity('26.2', 'CE', 'SOLR')).toBe(false);
+  });
+});
+
+describe('watermark del batch indexer (Search Community)', () => {
+  it('siembra el cursor en min(commit_time_ms) del alf_transaction', () => {
+    expect(minCommitTimeSql()).toContain('min(commit_time_ms)');
+    expect(minCommitTimeSql()).toContain('alf_transaction');
+    expect(watermarkSeedBody(1262304000000)).toBe('{"schemaVersion":1,"lastSuccessfulToTimeEpochMs":1262304000000}');
+  });
+
+  it('el script pone el cursor en el indice de estado y lo lee de vuelta', () => {
+    const script = searchCommunityReindexScript({ project: 'gadex-710', dbUser: 'alfresco', dbName: 'alfresco' });
+    expect(script).toContain(`_doc/${WATERMARK_DOC_ID}`);
+    expect(script).toContain('alfresco-reindex-state');
+    expect(script).toContain('min(commit_time_ms)');
+    expect(script).toContain("grep -Ei 'opensearch|elasticsearch'");
+  });
+
+  it('con URL del motor usa curl desde el host; con contenedor, dentro del contenedor', () => {
+    const host = searchCommunityReindexScript({ dbUser: 'alfresco', dbName: 'alfresco', searchUrl: 'http://es:9200/' });
+    expect(host).toContain('CURL="curl -fsS"');
+    expect(host).toContain('BASE=\'http://es:9200\'');
+    const container = searchCommunityReindexScript({ dbUser: 'alfresco', dbName: 'alfresco', searchContainer: 'gadex-search-1' });
+    expect(container).toContain('CURL="docker exec $SEARCH curl -fsS"');
+    expect(container).toContain("SEARCH='gadex-search-1'");
+  });
+});
+
+describe('prefix-map del indexador (namespaces propios)', () => {
+  it('deriva uri->prefix de los modelos y detecta los que faltan o difieren', () => {
+    const models = [{ namespaces: [{ uri: 'http://acme/gadex', prefix: 'gadex' }, { uri: 'http://acme/ocr', prefix: 'ocr' }] }];
+    const required = prefixesFromModels(models);
+    expect(required).toEqual([{ uri: 'http://acme/gadex', prefix: 'gadex' }, { uri: 'http://acme/ocr', prefix: 'ocr' }]);
+    expect(missingPrefixes(required, [{ uri: 'http://acme/gadex', prefix: 'gadex' }])).toEqual([{ uri: 'http://acme/ocr', prefix: 'ocr' }]);
+    expect(missingPrefixes(required, [{ uri: 'http://acme/gadex', prefix: 'GADEX' }])).toHaveLength(2);
+    expect(missingPrefixes(required, required)).toEqual([]);
   });
 });
 
@@ -46,7 +102,7 @@ describe('prefixes-file', () => {
 });
 
 describe('reindexing app', () => {
-  const strategy = resolveReindexStrategy('OPENSEARCH', '7.1.0', '26.2');
+  const strategy = resolveReindexStrategy('OPENSEARCH', '7.1.0', '26.2', 'EE');
   const params = {
     databaseUrl: 'jdbc:postgresql://db:5432/alfresco',
     databaseUser: 'alfresco',

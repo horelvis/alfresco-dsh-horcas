@@ -1,11 +1,17 @@
 /**
  * Reindexacion del destino (E9). Los indices NUNCA se migran: se regeneran.
  *
- * - Resuelve la estrategia por version/motor (Solr delete/tracking, Reindexing app de Search Enterprise).
- * - Genera `reindex.prefixes-file.json` (namespace uri -> prefix) desde los modelos de contenido.
+ * - Resuelve la estrategia por version/motor:
+ *   · Solr (CE < 26.2): delete/borrado de cores o tracking.
+ *   · Search Enterprise (EE): Reindexing app one-shot (`reindexByIds`).
+ *   · Search Community (CE >= 26.2, `elasticsearch`/`opensearch`): `alfresco-elasticsearch-batch-indexing`
+ *     por SONDEO. NO indexa el historico: hay que SEMBRAR el cursor (watermark) y dejar `maxGapAge=0`
+ *     hasta que alcance el presente.
+ * - Genera/valida `reindex.prefixes-file.json` (namespace uri -> prefix) desde los modelos de contenido.
  * - Construye el comando de la Reindexing app y parsea `Total indexed documents:: N`.
  *
- * Portado de DefaultReindexStrategyResolver/PrefixesFileGenerator/ReindexingApp/ModelNamespaceScanner.
+ * Fuentes: Hyland Search Community (batch-indexing 5.7.1; cursor `reindexByDate` en el indice de estado
+ * `alfresco-reindex-state`; `alfresco.reindex.continuous.maxGapAge`); acs-deployment.
  */
 import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -15,7 +21,7 @@ import { atLeast, parseVersion } from './versions.js';
 /** Componente mayor de una version (7.1.0 -> 7). */
 const major = (version: string): number => parseVersion(version)[0] ?? 0;
 
-export type ReindexKind = 'SOLR_DELETE' | 'SOLR_TRACKING' | 'REINDEXING_APP';
+export type ReindexKind = 'SOLR_DELETE' | 'SOLR_TRACKING' | 'REINDEXING_APP' | 'SEARCH_COMMUNITY';
 
 export interface ReindexStrategy {
   kind: ReindexKind;
@@ -29,14 +35,41 @@ export interface ModelNamespace {
   prefix: string;
 }
 
+/** Imagen del indexador de Search Community (indice por sondeo, con cursor/watermark). */
+export const BATCH_INDEXER_IMAGE = 'alfresco/alfresco-elasticsearch-batch-indexing:5.7.1';
+/** Indice de estado que guarda el cursor (oculto). */
+export const DEFAULT_STATE_INDEX = 'alfresco-reindex-state';
+/** Indice principal de busqueda. */
+export const DEFAULT_MAIN_INDEX = 'alfresco';
+/** Id del documento del cursor (watermark) dentro del indice de estado. */
+export const WATERMARK_DOC_ID = 'reindexByDate-watermark';
+export const DEFAULT_SEARCH_PORT = 9200;
+
 const isSearchEnterprise = (engine: string): boolean =>
   ['OPENSEARCH', 'ELASTICSEARCH'].includes(engine.toUpperCase());
 
-export function resolveReindexStrategy(targetEngine: string, solrVersion: string, targetVersion: string): ReindexStrategy {
+/** Search Community (indexador por sondeo con watermark) solo existe en CE 26.2+. */
+export function isSearchCommunity(targetVersion: string, edition: string, engine: string): boolean {
+  if (!isSearchEnterprise(engine)) return false;
+  if (edition.toUpperCase() !== 'CE') return false;
+  const [maj = 0, min = 0] = parseVersion(targetVersion);
+  return maj > 26 || (maj === 26 && min >= 2);
+}
+
+export function resolveReindexStrategy(
+  targetEngine: string,
+  solrVersion: string,
+  targetVersion: string,
+  edition = 'CE',
+): ReindexStrategy {
   if (!isSearchEnterprise(targetEngine)) {
     return major(solrVersion) <= 5
       ? { kind: 'SOLR_DELETE', tool: 'solr', args: ['stop', 'delete-cores', 'alfresco', 'archive', 'start'], online: false }
       : { kind: 'SOLR_TRACKING', tool: 'solr', args: ['reindex', 'alfresco', 'archive'], online: false };
+  }
+  // CE 26.2+: el indice se regenera con el batch-indexing por sondeo (Search Community), no con la app EE.
+  if (isSearchCommunity(targetVersion, edition, targetEngine)) {
+    return { kind: 'SEARCH_COMMUNITY', tool: BATCH_INDEXER_IMAGE, args: [], online: true };
   }
   return {
     kind: 'REINDEXING_APP',
@@ -94,6 +127,98 @@ export async function writePrefixesFile(directory: string, namespaces: ModelName
   await mkdir(directory, { recursive: true });
   await writeFile(file, prefixesJson(namespaces), 'utf8');
   return file;
+}
+
+/** Namespaces (uri -> prefix) de un conjunto de modelos de contenido, ordenados por uri. */
+export function prefixesFromModels(models: Array<{ namespaces: ModelNamespace[] }>): ModelNamespace[] {
+  const found = new Map<string, string>();
+  for (const model of models) for (const ns of model.namespaces) if (ns.uri && ns.prefix) found.set(ns.uri, ns.prefix);
+  return [...found.entries()].map(([uri, prefix]) => ({ uri, prefix })).sort((a, b) => (a.uri < b.uri ? -1 : 1));
+}
+
+/**
+ * Namespaces requeridos que FALTAN (o están con OTRO prefix) en el fichero del indexador. El fichero del
+ * batch indexer REEMPLAZA el mapa embebido (no lo amplía): un namespace ausente deja nodos SIN indexar en
+ * silencio, así que hay que comprobarlo contra los namespaces en uso de los modelos propios.
+ */
+export function missingPrefixes(required: ModelNamespace[], provided: ModelNamespace[]): ModelNamespace[] {
+  const have = new Map(provided.map((n) => [n.uri, n.prefix]));
+  return required.filter((n) => have.get(n.uri) !== n.prefix);
+}
+
+/** SQL (solo lectura) con el primer commit de la BD: semilla del cursor del batch indexer. */
+export function minCommitTimeSql(): string {
+  return 'SELECT min(commit_time_ms) FROM alf_transaction;';
+}
+
+/** Cuerpo del documento del cursor (watermark `reindexByDate`) del batch indexer de Search Community. */
+export function watermarkSeedBody(minCommitTimeEpochMs: number): string {
+  return JSON.stringify({ schemaVersion: 1, lastSuccessfulToTimeEpochMs: minCommitTimeEpochMs });
+}
+
+const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\\''`)}'`;
+
+export interface SearchCommunityOptions {
+  /** Proyecto compose del DESTINO, para descubrir sus contenedores (si se conoce). */
+  project?: string;
+  /** Contenedor de PostgreSQL del DESTINO (si se conoce). */
+  dbContainer?: string;
+  dbUser: string;
+  dbName: string;
+  /** Password de la BD (si el contenedor no admite socket local sin ella). No se expone en la evidencia. */
+  dbPassword?: string;
+  /** Contenedor del motor de busqueda (si se conoce). */
+  searchContainer?: string;
+  /** URL del motor accesible desde el HOST DESTINO (si se conoce); si no, se usa `curl` dentro del contenedor. */
+  searchUrl?: string;
+  /** Nombre del indice de estado (cursor). */
+  stateIndex?: string;
+  port?: number;
+}
+
+/**
+ * Script (idempotente, solo DESTINO) que SIEMBRA el cursor del batch indexer en el primer commit de la BD
+ * para que indexe el backlog migrado. NO toca el historico por sí solo: el indexador, por defecto, arranca
+ * en `now - overlap`; con este cursor + `maxGapAge=0` recorre desde el principio. Devuelve el watermark
+ * leido de vuelta como prueba.
+ */
+export function searchCommunityReindexScript(o: SearchCommunityOptions): string {
+  const state = o.stateIndex ?? DEFAULT_STATE_INDEX;
+  const port = o.port ?? DEFAULT_SEARCH_PORT;
+  const dbUser = shellQuote(o.dbUser);
+  const dbName = shellQuote(o.dbName);
+  const pgEnv = o.dbPassword ? `-e PGPASSWORD=${shellQuote(o.dbPassword)} ` : '';
+  const projectFilter = o.project ? `--filter ${shellQuote(`label=com.docker.compose.project=${o.project}`)} ` : '';
+  const findContainer = (pattern: string): string =>
+    `"$(docker ps ${projectFilter}--format '{{.Names}}|{{.Image}}' | grep -Ei ${shellQuote(pattern)} | head -n1 | cut -d'|' -f1)"`;
+  const search = o.searchContainer ? shellQuote(o.searchContainer) : `\${MIGRATOR_DST_SEARCH_CONTAINER:-}`;
+  const db = o.dbContainer ? shellQuote(o.dbContainer) : `\${MIGRATOR_DST_PG_CONTAINER:-}`;
+  const lines = [
+    'set -e',
+    `SEARCH=${search}`,
+    `DB=${db}`,
+    `[ -n "$SEARCH" ] || SEARCH=${findContainer('opensearch|elasticsearch')}`,
+    `[ -n "$DB" ] || DB=${findContainer('postgres')}`,
+    `[ -n "$SEARCH" ] || { echo "sin contenedor de busqueda (opensearch/elasticsearch) en el DESTINO"; exit 2; }`,
+    `[ -n "$DB" ] || { echo "sin contenedor de PostgreSQL en el DESTINO (usa MIGRATOR_REINDEX_CMD para otra BD)"; exit 3; }`,
+    `MIN="$(docker exec ${pgEnv}"$DB" psql -U ${dbUser} -d ${dbName} -tAc ${shellQuote(minCommitTimeSql())} | tr -d '[:space:]')"`,
+    `case "$MIN" in ''|*[!0-9]*) echo "min(commit_time_ms) no valido: '$MIN'"; exit 4;; esac`,
+  ];
+  if (o.searchUrl) {
+    lines.push(
+      `CURL="curl -fsS"`,
+      `BASE=${shellQuote(o.searchUrl.replace(/\/$/, ''))}`,
+    );
+  } else {
+    lines.push(`CURL="docker exec $SEARCH curl -fsS"`, `BASE="http://localhost:${port}"`);
+  }
+  lines.push(
+    `BODY="{\\"schemaVersion\\":1,\\"lastSuccessfulToTimeEpochMs\\":$MIN}"`,
+    `$CURL -X PUT "$BASE/${state}/_doc/${WATERMARK_DOC_ID}" -H 'Content-Type: application/json' -d "$BODY" >/dev/null`,
+    `echo "cursor ${state}/${WATERMARK_DOC_ID} sembrado en min(commit_time_ms)=$MIN"`,
+    `$CURL "$BASE/${state}/_doc/${WATERMARK_DOC_ID}"`,
+  );
+  return lines.join('\n');
 }
 
 export interface ReindexParams {

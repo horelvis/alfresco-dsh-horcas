@@ -80,7 +80,8 @@ const dbImage = (engine: string | undefined): string => {
 const searchImage = (engine: string | undefined): string => {
   switch ((engine ?? '').toUpperCase()) {
     case 'OPENSEARCH': return 'opensearchproject/opensearch:2.11.1';
-    case 'ELASTICSEARCH': return 'docker.elastic.co/elasticsearch/elasticsearch:8.11.3';
+    // Search Community (26.x) soporta Elasticsearch 8.17.x; OpenSearch 2.11.1.
+    case 'ELASTICSEARCH': return 'docker.elastic.co/elasticsearch/elasticsearch:8.17.0';
     default: throw new Error('Solr no se despliega en el destino (26.x)');
   }
 };
