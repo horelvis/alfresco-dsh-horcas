@@ -5,7 +5,7 @@
  * aporta el dominio (rutas de version, esquemas de referencia, recomendaciones oficiales) y ENCAPSULA
  * la seguridad (origen inmutable; escritura solo en destino y con aprobacion).
  */
-import type { Context } from '@deepseek-ai/cordis';
+import type { Context, Plugin } from '@deepseek-ai/cordis';
 import { installSecurity, type SecurityContext } from './security/policy.js';
 import { installRedaction, type RedactContext } from './security/redact.js';
 import { installApproval, type ApprovalContext } from './approval.js';
@@ -29,6 +29,7 @@ import { registerWizardTools } from './tools/wizard.js';
 import { registerGuardTools } from './tools/guards.js';
 import { registerVerifyTools } from './tools/verify.js';
 import { registerHelpTools } from './tools/help.js';
+import { HelpCommand } from './commands.js';
 import { registerJournalTools } from './tools/journal.js';
 import { registerLessonTools } from './tools/lessons.js';
 import { registerReportTools } from './tools/report.js';
@@ -65,6 +66,8 @@ export function apply(ctx: Context): void {
   registerVerifyTools(ctx);
   registerExperienceTools(ctx);
   registerHelpTools(ctx);
+  // `/help` humano (solo en UIs con registro de comandos).
+  ctx.plugin(HelpCommand as unknown as Plugin, undefined);
   registerJournalTools(ctx);
   registerLessonTools(ctx);
   registerExecutionTools(ctx);

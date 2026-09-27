@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -10,6 +10,8 @@ import {
   isPrereleaseImage,
   manualCommands,
   manualCommandsForFile,
+  mergeStackEnv,
+  ensureOperatorStackEnv,
   renderCompose,
   shouldSkipProvision,
   stopTargets,
@@ -115,14 +117,60 @@ describe('manualCommands (copiar y ejecutar en el destino, sin SSH)', () => {
 });
 
 describe('manualCommandsForFile (compose del operador, sin generar ni copiar)', () => {
-  it('usa el fichero tal cual y levanta solo la infra, sin -p ni base64', () => {
-    const commands = manualCommandsForFile('/home/op/infra/alfresco/docker-compose.yml');
-    expect(commands).toEqual([
-      'sudo docker compose -f "/home/op/infra/alfresco/docker-compose.yml" down --remove-orphans',
-      'sudo docker compose -f "/home/op/infra/alfresco/docker-compose.yml" up -d postgres activemq search',
+  it('usa el fichero tal cual, deja el .env del stack junto a el y levanta solo la infra, sin -p ni base64', () => {
+    const commands = manualCommandsForFile('/srv/infra/alfresco/docker-compose.yml', 'acme');
+    expect(commands[0]).toBe('scp .migrator/provision/stack.env <usuario>@<host>:/tmp/acme.env');
+    // Fusion: solo claves ausentes o vacias; no pisa lo que ya tenga el operador.
+    expect(commands[1]).toContain('/srv/infra/alfresco/.env');
+    expect(commands[1]).toContain('/tmp/acme.env');
+    expect(commands.slice(2)).toEqual([
+      'sudo docker compose -f "/srv/infra/alfresco/docker-compose.yml" down --remove-orphans',
+      'sudo docker compose -f "/srv/infra/alfresco/docker-compose.yml" up -d postgres activemq search',
     ]);
     expect(commands.join(' ')).not.toContain('base64');
     expect(commands.join(' ')).not.toContain(' -p ');
+  });
+});
+
+describe('mergeStackEnv (.env del compose del operador)', () => {
+  const secrets = { POSTGRES_PASSWORD: 'pg', ACTIVEMQ_ADMIN_LOGIN: 'admin', ACTIVEMQ_ADMIN_PASSWORD: 'mq' };
+
+  it('sin .env previo: escribe todas las claves', () => {
+    const merged = mergeStackEnv('', secrets);
+    expect(merged.added).toEqual(['POSTGRES_PASSWORD', 'ACTIVEMQ_ADMIN_LOGIN', 'ACTIVEMQ_ADMIN_PASSWORD']);
+    expect(merged.content).toBe('POSTGRES_PASSWORD=pg\nACTIVEMQ_ADMIN_LOGIN=admin\nACTIVEMQ_ADMIN_PASSWORD=mq\n');
+  });
+
+  it('conserva lo del operador y solo rellena lo ausente o vacio', () => {
+    const merged = mergeStackEnv('# del operador\nTZ=Europe/Madrid\nPOSTGRES_PASSWORD=suya\nACTIVEMQ_ADMIN_PASSWORD=\n', secrets);
+    expect(merged.added).toEqual(['ACTIVEMQ_ADMIN_LOGIN', 'ACTIVEMQ_ADMIN_PASSWORD']);
+    expect(merged.content).toBe(
+      '# del operador\nTZ=Europe/Madrid\nPOSTGRES_PASSWORD=suya\nACTIVEMQ_ADMIN_PASSWORD=mq\nACTIVEMQ_ADMIN_LOGIN=admin\n',
+    );
+  });
+
+  it('idempotente: si no falta nada no hay cambios', () => {
+    const first = mergeStackEnv('', secrets).content;
+    expect(mergeStackEnv(first, secrets).added).toEqual([]);
+    expect(mergeStackEnv(first, secrets).content).toBe(first);
+  });
+});
+
+describe('ensureOperatorStackEnv', () => {
+  it('fusiona el .env junto al compose (permisos 600) y devuelve solo los NOMBRES anadidos', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'op-env-'));
+    try {
+      await writeFile(path.join(dir, '.env'), 'POSTGRES_PASSWORD=suya\n', 'utf8');
+      const added = await ensureOperatorStackEnv({ name: 'local' }, path.join(dir, 'docker-compose.yml'), {
+        POSTGRES_PASSWORD: 'pg',
+        ACTIVEMQ_ADMIN_PASSWORD: 'mq',
+      });
+      expect(added).toEqual(['ACTIVEMQ_ADMIN_PASSWORD']);
+      expect(await readFile(path.join(dir, '.env'), 'utf8')).toBe('POSTGRES_PASSWORD=suya\nACTIVEMQ_ADMIN_PASSWORD=mq\n');
+      expect((await stat(path.join(dir, '.env'))).mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

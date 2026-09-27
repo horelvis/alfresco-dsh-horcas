@@ -17,6 +17,7 @@ import {
   projectToComposeRequest,
   provisionCompose,
   ensureDataDirs,
+  ensureOperatorStackEnv,
   ensureStackSecrets,
   composeImages,
   globalProperties,
@@ -151,19 +152,22 @@ export function registerProvisionTools(ctx: Context): void {
         // NO genera ni escribe ningun compose (no toca su despliegue); solo valida, para su stack y
         // levanta la infraestructura. Alfresco se arranca despues del restore (paso `schema-upgrade`).
         if (composeFile) {
-          const manual = [{ hop: hops[hops.length - 1]!.to, commands: manualCommandsForFile(composeFile) }];
+          const manual = [{ hop: hops[hops.length - 1]!.to, commands: manualCommandsForFile(composeFile, project.project) }];
           if (!execute) {
             return json({ mode, skipped: false, hops: 0, files: [composeFile], stopped: [], manual, executed: false });
           }
           const invalid = await validateRemoteCompose(host, composeFile);
           if (invalid) throw new Error(`Compose del DESTINO invalido (${composeFile}): ${invalid}`);
+          // Secretos del stack en el `.env` junto a SU compose (fusion, sin pisar lo suyo): sin ellos un
+          // `up` interpola las credenciales a vacio (drift detectado en el ensayo).
+          const envAdded = await ensureOperatorStackEnv(host, composeFile, await ensureStackSecrets(`${stateDir()}/provision`));
           const stopped = (await downExternalCompose(host, composeFile)) ? [composeFile] : [];
           try {
             await upExternalInfra(host, composeFile);
           } catch (error) {
-            return json({ mode, skipped: false, hops: 1, files: [composeFile], stopped, manual, executed: false, error: describeError(error) });
+            return json({ mode, skipped: false, hops: 1, files: [composeFile], stopped, manual, executed: false, envAdded, error: describeError(error) });
           }
-          return json({ mode, skipped: false, hops: 1, files: [composeFile], stopped, manual, executed: true });
+          return json({ mode, skipped: false, hops: 1, files: [composeFile], stopped, manual, executed: true, envAdded });
         }
         const workDir = `${stateDir()}/provision`;
         const memTotal = await dockerMemTotal(host);

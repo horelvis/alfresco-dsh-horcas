@@ -258,7 +258,9 @@ store, pg-data, version REST), no \`ssh\`/\`docker\` a mano.
 **NUNCA operes el DESTINO por \`bash\`/\`ssh\`** (docker, ficheros, BD): todo cambio va por \`migrator_run_steps\`.
 Si un paso falla, diagnostica en solo lectura, anota el hito y reintenta con \`resume=true\`; si no puedes
 avanzar sin tocar el destino a mano, PARA y avisa al humano con el bloqueo concreto.
-Con \`target.composeFile\` (compose del operador) NO uses \`provision-hop\`: el operador cambia la imagen.
+Con \`target.composeFile\` (compose del operador) NO uses \`provision-hop\`: el operador cambia la imagen. Para
+alinear sus credenciales usa \`migrator_provision\` (fusiona los secretos del stack en el \`.env\` junto a SU
+compose, sin pisar lo suyo, y rearranca la infra); \`schema-upgrade\` tambien lo asegura antes de arrancar.
 
 **El reindex NO se hace por hop.** Solo se regenera el indice cuando el DESTINO ya esta en la version
 **FINAL** del proyecto (26.2); en hops intermedios (7.4, 25.3) se OMITE siempre (el plugin lo impone). No

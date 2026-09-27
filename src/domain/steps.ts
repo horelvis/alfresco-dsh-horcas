@@ -23,6 +23,7 @@ import {
   composeProjectName,
   dockerMemTotal,
   ensureDataDirs,
+  ensureOperatorStackEnv,
   ensureStackSecrets,
   globalProperties,
   hasPgDataBind,
@@ -374,6 +375,14 @@ const schemaUpgrade: StepDefinition = {
       const owner = await runShell(ctx.destination, alfDataOwnershipCommand(dstDir));
       if (owner.exitCode !== 0) {
         return fail('schema-upgrade', `no se pudo asignar ${dstDir}/alf-data al usuario de Alfresco: ${owner.stderr.trim()}`);
+      }
+    }
+    // Compose del operador: sus `${...}` se resuelven con el `.env` junto a el (fusion con los secretos del stack).
+    if (compose.external) {
+      try {
+        await ensureOperatorStackEnv(ctx.destination, compose.file, await ensureStackSecrets(path.join(ctx.state, 'provision')));
+      } catch (error) {
+        return fail('schema-upgrade', describeError(error));
       }
     }
     // --force-recreate: contenedor (y log) nuevos, para que smoke-boot no lea errores de arranques previos.

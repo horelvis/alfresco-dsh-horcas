@@ -477,12 +477,55 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
 }
 
 /**
- * Comandos manuales para un compose EXISTENTE en el DESTINO (aportado por el operador con
- * `target.composeFile`): no se genera ni copia nada; se usa el fichero tal cual. Sin `-p` para respetar
- * el nombre de proyecto del propio compose (su `name:` o el directorio), sin tocar otros stacks.
+ * Fusiona los secretos del stack en el `.env` del compose del OPERADOR: conserva todo lo suyo y solo
+ * rellena las claves AUSENTES o VACIAS (no pisa un valor que el operador haya puesto). `added` lleva
+ * solo NOMBRES (los valores no viajan al LLM).
  */
-export function manualCommandsForFile(composeFile: string): string[] {
+export function mergeStackEnv(existing: string, secrets: Record<string, string>): { content: string; added: string[] } {
+  const lines = existing ? existing.replace(/\n$/, '').split('\n') : [];
+  const added: string[] = [];
+  for (const [key, value] of Object.entries(secrets)) {
+    const index = lines.findIndex((line) => line.split('=')[0]!.trim() === key);
+    if (index < 0) {
+      lines.push(`${key}=${value}`);
+      added.push(key);
+    } else if (lines[index]!.slice(lines[index]!.indexOf('=') + 1).trim() === '') {
+      lines[index] = `${key}=${value}`;
+      added.push(key);
+    }
+  }
+  return { content: lines.length ? `${lines.join('\n')}\n` : '', added };
+}
+
+/**
+ * Deja los secretos del stack en el `.env` JUNTO al compose del OPERADOR (`target.composeFile`), fusionado
+ * con el suyo: Docker Compose lo carga del directorio del proyecto, asi que un `docker compose -f <file>`
+ * (del migrator o manual) ya no interpola `${POSTGRES_PASSWORD}`/`${ACTIVEMQ_ADMIN_*}` a vacio. Solo escribe
+ * si falta algo; devuelve los NOMBRES anadidos.
+ */
+export async function ensureOperatorStackEnv(host: HostRef, composeFile: string, secrets: Record<string, string>): Promise<string[]> {
+  const envFile = path.posix.join(path.posix.dirname(composeFile), '.env');
+  const current = await runShell(host, `cat "${envFile}" 2>/dev/null || true`);
+  const merged = mergeStackEnv(current.stdout, secrets);
+  if (merged.added.length === 0) return [];
+  const b64 = Buffer.from(merged.content, 'utf8').toString('base64');
+  const write = await runShell(host, `printf '%s' '${b64}' | base64 -d > "${envFile}" && chmod 600 "${envFile}"`);
+  if (write.exitCode !== 0) throw new Error(`no se pudo escribir ${envFile}: ${write.stderr.trim()}`);
+  return merged.added;
+}
+
+/**
+ * Comandos manuales para un compose EXISTENTE en el DESTINO (aportado por el operador con
+ * `target.composeFile`): no se genera ni copia compose; se usa el fichero tal cual. Sin `-p` para respetar
+ * el nombre de proyecto del propio compose (su `name:` o el directorio), sin tocar otros stacks. Los
+ * secretos del stack se fusionan en su `.env` (solo claves ausentes o vacias).
+ */
+export function manualCommandsForFile(composeFile: string, projectName: string): string[] {
+  const envFile = `/tmp/${slug(projectName)}.env`;
+  const target = path.posix.join(path.posix.dirname(composeFile), '.env');
   return [
+    `scp .migrator/provision/stack.env <usuario>@<host>:${envFile}`,
+    `sudo touch "${target}" && sudo chmod 600 "${target}" && while IFS='=' read -r k v; do sudo grep -qE "^$k=.+" "${target}" || { sudo sed -i "/^$k=/d" "${target}"; echo "$k=$v" | sudo tee -a "${target}" >/dev/null; }; done < ${envFile}`,
     `sudo docker compose -f "${composeFile}" down --remove-orphans`,
     `sudo docker compose -f "${composeFile}" up -d ${INFRA_SERVICES}`,
   ];
