@@ -18,6 +18,7 @@ import { checklistFacts } from '../domain/evidence.js';
 import { assessSource } from '../domain/assessment.js';
 import { estimate } from '../domain/estimator.js';
 import { renderMigrationReport } from '../domain/report.js';
+import { recordAudit, runAudit } from '../domain/audit.js';
 import { windowHours } from './planning.js';
 import { envSecrets, redactText } from '../security/redact.js';
 
@@ -36,8 +37,8 @@ export function registerReportTools(ctx: Context): void {
       output: {
         schema: { type: 'object', additionalProperties: true },
         render: (_args, value) => {
-          const v = value as { file: string; lines: number; checklist: string };
-          return text(`informe escrito en ${v.file} (${v.lines} lineas) · checklist ${v.checklist}`);
+          const v = value as { file: string; lines: number; checklist: string; audit: string };
+          return text(`informe escrito en ${v.file} (${v.lines} lineas) · checklist ${v.checklist} · auditoria ${v.audit}`);
         },
       },
       async execute(args, exec) {
@@ -84,6 +85,9 @@ export function registerReportTools(ctx: Context): void {
               : undefined,
           )
           .catch(() => undefined);
+        // Auditoria (Nivel 0) ANTES de escribir: el informe NO se declara validado si hay FAIL.
+        const audit = await runAudit(project, state);
+        await recordAudit(state, audit);
         const markdown = renderMigrationReport({
           project,
           hops,
@@ -93,13 +97,15 @@ export function registerReportTools(ctx: Context): void {
           journal: await loadJournal(state, project.project),
           experience: (await loadExperiences(state, project.project)).find((r) => r.stage === project.stage),
           ...(estimation ? { estimate: estimation } : {}),
+          audit,
           generatedAt: new Date().toISOString(),
         });
         const file = path.resolve(cwd, args.file ?? `INFORME-MIGRACION-${project.project}-${project.stage}.md`);
         const safe = redactText(markdown, envSecrets());
         await writeFile(file, safe, 'utf8');
         const counts = ['OK', 'WARN', 'PENDING', 'FAIL'].map((s) => `${checklist.filter((i) => i.status === s).length} ${s}`).join(' · ');
-        return { file, lines: safe.split('\n').length, checklist: counts };
+        const aud = audit.fails > 0 ? `${audit.fails} FAIL (NO validado)` : audit.warns > 0 ? `0 FAIL / ${audit.warns} WARN` : 'OK';
+        return { file, lines: safe.split('\n').length, checklist: counts, audit: aud };
       },
     }),
   );

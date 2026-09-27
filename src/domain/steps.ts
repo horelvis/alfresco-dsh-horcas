@@ -76,6 +76,8 @@ export interface StepOutcome {
 export interface StepDefinition {
   id: string;
   description: string;
+  /** Linea CORTA para la aprobacion humana (una frase, en claro). El detalle vive en `description`. */
+  short: string;
   /** Escribe en el destino (true) o es solo lectura/verificacion (false). */
   writes: boolean;
   run(ctx: StepContext, params: Record<string, unknown>): Promise<StepOutcome>;
@@ -98,6 +100,7 @@ function destinationDbUrl(project: ProjectConfig): string {
 /** `preflight-target`: comprueba conectividad y runtime en el destino (SSH/docker/compose). */
 const preflightTarget: StepDefinition = {
   id: 'preflight-target',
+  short: 'Comprueba conexion y Docker en el DESTINO',
   description: 'Conectividad y runtime del destino (ssh, docker, docker compose).',
   writes: false,
   async run(ctx) {
@@ -128,6 +131,7 @@ const preflightTarget: StepDefinition = {
 /** `backup-source-db`: dump de la BD de ORIGEN (lectura del origen; escribe solo el fichero de trabajo). */
 const backupSourceDb: StepDefinition = {
   id: 'backup-source-db',
+  short: 'Copia de seguridad de la BD del ORIGEN (solo lectura)',
   description: 'Dump logico de la BD del origen a un fichero de trabajo (D2). El origen solo se lee.',
   writes: false,
   async run(ctx, params) {
@@ -189,6 +193,7 @@ export async function copyDumpToDestination(
 /** `copy-content`: replica el content store del origen al destino (rsync/S3/Azure, con delta). */
 const copyContent: StepDefinition = {
   id: 'copy-content',
+  short: 'Copia el content store del ORIGEN al DESTINO',
   description: 'Copia el content store del origen al destino (rsync/S3/Azure; delta opcional).',
   writes: true,
   async run(ctx, params) {
@@ -281,6 +286,7 @@ export function restoreHopViolation(ctx: Pick<StepContext, 'hop' | 'project'>): 
 
 const restoreTargetDb: StepDefinition = {
   id: 'restore-target-db',
+  short: 'Restaura la copia de la BD en el DESTINO',
   description:
     'Restaura el dump logico en la BD del destino (D2) con `docker exec pg_restore` dentro del contenedor (el host no necesita pg_restore). Usa el dump del DESTINO si existe; si no, el local. MIGRATOR_DB_RESTORE_CMD es opcional.',
   writes: true,
@@ -344,6 +350,7 @@ const restoreTargetDb: StepDefinition = {
 /** `schema-upgrade`: arranca el ACS destino y espera a que aplique los schema patches. */
 const schemaUpgrade: StepDefinition = {
   id: 'schema-upgrade',
+  short: 'Arranca Alfresco y aplica el esquema (auto-update)',
   description:
     'Arranca Alfresco SOBRE la BD ya restaurada y espera al auto-update de esquema. La infra debe estar levantada y la BD restaurada (orden natural).',
   writes: true,
@@ -477,6 +484,7 @@ async function hopCompose(ctx: StepContext): Promise<{ cmd: string; file: string
  */
 const provisionHop: StepDefinition = {
   id: 'provision-hop',
+  short: 'Despliega en el DESTINO la version del hop (conserva los datos)',
   description:
     'Pone el DESTINO en la version del hop que toca (7.4 -> 25.3 -> 26.2): para el stack anterior y levanta la infraestructura con <dataDir>/compose/docker-compose-<hop>.yml conservando BD y content store. Alfresco se arranca en schema-upgrade. Debe ir PRIMERO en la composicion del hop.',
   writes: true,
@@ -586,6 +594,7 @@ const provisionHop: StepDefinition = {
  */
 const smokeBoot: StepDefinition = {
   id: 'smoke-boot',
+  short: 'Comprueba que el DESTINO arranco bien (solo lectura)',
   description:
     'Smoke test del hop (solo lectura): el DESTINO responde EN LA VERSION DEL HOP, la raiz resuelve y el log de alfresco no tiene errores de esquema. Va tras schema-upgrade.',
   writes: false,
@@ -621,6 +630,7 @@ const smokeBoot: StepDefinition = {
 /** `reindex`: regenera el indice de busqueda en el destino (Reindexing app / Solr tracking). */
 const reindex: StepDefinition = {
   id: 'reindex',
+  short: 'Regenera el indice de busqueda (solo en la version final)',
   description: 'Regenera el indice de busqueda del DESTINO. SOLO en la version FINAL (nunca por hop).',
   writes: true,
   async run(ctx, params) {
@@ -669,6 +679,7 @@ const reindex: StepDefinition = {
 /** `verify-target`: comprueba la salud del destino tras la migracion. */
 const verifyTarget: StepDefinition = {
   id: 'verify-target',
+  short: 'Verifica la salud del DESTINO (REST y recuento de nodos)',
   description: 'Comprueba salud del destino (readiness REST y conteo de nodos por JDBC).',
   writes: false,
   async run(ctx) {

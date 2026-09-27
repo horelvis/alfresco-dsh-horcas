@@ -40,6 +40,8 @@ export const READ_ONLY_TOOLS = [
   // Estado real del destino (solo lectura; contenedor efimero con montaje :ro para carpetas de otros uid).
   'migrator_target_state',
   'migrator_report',
+  // Auditoria determinista del estado durable (solo escribe el resultado en `.migrator/audit.jsonl`).
+  'migrator_audit',
   // Estado local (no toca origen ni destino): registrar/consultar la experiencia de ensayo.
   'migrator_rehearsal_record',
   'migrator_experience_latest',
@@ -180,29 +182,36 @@ export function writeReason(name: string, args: unknown, toolDescription?: strin
   const clean = (value: string): string => value.trim().replace(/\s+/g, ' ').replace(/[.]\s*$/, '');
   const title = toolDescription ? clean(toolDescription) : `La tool ${name} puede escribir en el DESTINO`;
   const details: string[] = [];
-  if (stage) {
-    details.push(
-      stage.toLowerCase() === 'prod'
-        ? 'Entorno: PRODUCCION (stage=prod; exige ensayo validado)'
-        : `Entorno: ENSAYO (stage=${stage}; NO exige ensayo validado)`,
-    );
-  }
+  details.push(
+    stage && stage.toLowerCase() === 'prod'
+      ? 'Entorno: PRODUCCION (stage=prod; requiere un ensayo validado)'
+      : stage
+        ? `Entorno: ENSAYO (stage=${stage}; no es produccion)`
+        : 'Entorno: no indicado',
+  );
   if (a.project) details.push(`Proyecto: ${String(a.project)}`);
   const dryRun = a.execute !== true;
-  const mode = dryRun ? 'dry-run (no ejecuta nada)' : 'EXECUTE (escribe en el DESTINO)';
+  const mode = dryRun
+    ? 'Modo: simulacion (dry-run), no escribe nada'
+    : 'Modo: ESCRITURA REAL en el DESTINO';
   if (name === 'migrator_run_steps' && Array.isArray(a.steps)) {
-    details.push(`Modo: ${mode}`);
-    for (const step of a.steps as unknown[]) {
+    const steps = a.steps as unknown[];
+    details.push(mode);
+    details.push(`Pasos (${steps.length}, en orden):`);
+    for (const step of steps) {
       const id = String(step);
-      details.push(`${id} — ${clean(stepById(id)?.description ?? 'paso')}`);
+      details.push(`  - ${id}: ${clean(stepById(id)?.short ?? stepById(id)?.description ?? 'paso')}`);
     }
   } else if ('execute' in a) {
-    details.push(`Modo: ${mode}`);
+    details.push(mode);
   }
-  if (a.delta === true) details.push('Copia incremental');
-  if (a.resume === true) details.push('Reanuda (omite pasos ya OK)');
+  if (a.delta === true) details.push('Copia incremental (solo cambios)');
+  if (a.resume === true) details.push('Reanudar: omite los pasos ya completados');
   if (a.out) details.push(`Salida: ${String(a.out)}`);
-  const body = name === 'migrator_wizard' ? undefined : 'El ORIGEN no se modifica.';
+  const body =
+    name === 'migrator_wizard'
+      ? undefined
+      : 'El ORIGEN (los datos de partida) no se modifica: todo se hace sobre copias en el DESTINO.';
   const parts = [`${title}.`, ...details];
   if (body) parts.push(body);
   return { reason: parts.join(' · '), title, details, body };
@@ -284,10 +293,18 @@ const protectedPath = new RegExp(`(^|[\\s"'=:(/~])[^\\s"']*/(${PROTECTED_DIRS.jo
 const SELF_WRITE =
   /\b(?:npm|pnpm|yarn|npx|tsc|tsdown|node\s+\S*build|rm|mv|cp|rsync|chmod|chown|tee|truncate|touch|ln|mkdir|install)\b|\bsed\s+-i\b|\bgit(?:\s+-[Cc]\s+\S+)*\s+(?:commit|checkout|reset|restore|stash|rebase|merge|pull|push|apply|am|clean|switch)\b|(?:^|[^0-9&=<>\-])>>?(?![=>])\s*(?!\/dev\/null|&)/;
 
+/**
+ * Vacía el contenido de los literales entre comillas conservando su estructura (las comillas quedan).
+ * El verbo de escritura debe estar FUERA de comillas: dentro de un literal es texto a buscar (p. ej. el
+ * patrón de un `grep "…rsync…"`) o datos, no una orden. La ruta protegida se sigue detectando sobre el
+ * comando ORIGINAL, así `rm "<plugin>/x"` o `> "<plugin>/x"` no se libran (el verbo va fuera de comillas).
+ */
+const blankQuoted = (command: string): string => command.replace(/'[^']*'/g, "''").replace(/"[^"]*"/g, '""');
+
 /** Motivo de bloqueo si el comando modifica el plugin o el arnes (autoproteccion). */
 export function selfModificationReason(command: string): string | undefined {
   if (!protectedPath.test(command)) return undefined;
-  if (!SELF_WRITE.test(command)) return undefined;
+  if (!SELF_WRITE.test(blankQuoted(command))) return undefined;
   return 'Autoproteccion: el agente no puede modificar, compilar ni versionar el plugin del migrador ni el arnes (solo leerlos). Si hace falta un cambio o un reinicio, para y avisa al humano.';
 }
 

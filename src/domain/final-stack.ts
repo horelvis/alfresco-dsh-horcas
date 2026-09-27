@@ -47,7 +47,9 @@ export function repositoryJavaOpts(stack: FinalStack | undefined, version: strin
   const opts: string[] = [];
   if (brokerNeedsAuth(version)) {
     opts.push(
-      '-Dmessaging.broker.url=failover:(nio://activemq:61616)?timeout=3000',
+      // La URL va CITADA dentro de JAVA_OPTS: catalina.sh la pasa por `eval` y los parentesis de
+      // `failover:(...)` rompen el shell si no hay comillas (como en el compose oficial).
+      '-Dmessaging.broker.url="failover:(nio://activemq:61616)?timeout=3000"',
       '-Dmessaging.broker.username=${ACTIVEMQ_ADMIN_LOGIN}',
       '-Dmessaging.broker.password=${ACTIVEMQ_ADMIN_PASSWORD}',
     );

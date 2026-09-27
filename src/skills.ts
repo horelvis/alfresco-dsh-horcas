@@ -241,6 +241,10 @@ Ante ese bloqueo: explica los namespaces al humano y pide el JAR (en el workspac
 o su decision de no migrarlos; no lo rodees. Los modulos migrados de la version final no deben volver a registrar esos
 modelos.
 
+**Antes de dar el ensayo por validado o emitir el informe final, AUDITA** (skill \`alfresco-migration-audit\`):
+ejecuta \`migrator_audit\` (0 FAIL) y lanza un subagente revisor independiente (contexto fresco, solo lectura).
+El informe NO se declara \`validado=si\` si la auditoria tiene FAIL.
+
 **Documento de migracion:** al cerrar (o ante un bloqueo) ejecuta \`migrator_report\`: deja en el workspace el
 informe con ejecucion, tiempos estimado vs real, checklist con evidencia, decisiones, rollback y pendientes.
 
@@ -297,6 +301,43 @@ Recuperacion: si un paso se interrumpe (outcome unknown), NO reintentes a ciegas
   };
 }
 
+export function auditSkill(): SkillContent {
+  return {
+    name: 'alfresco-migration-audit',
+    description:
+      'Rol de REVISOR independiente: separa quien ejecuta de quien verifica. Cargar antes de dar el ensayo por validado, antes de emitir el informe final y antes del corte a PROD. Ejecuta migrator_audit (hechos) y lanza un subagente auditor de solo lectura con contexto fresco.',
+    content: `# Auditoria de la migracion (rol de REVISOR independiente)
+
+**Proposito:** separar quien EJECUTA de quien VERIFICA. El ejecutor no audita su propio resumen; el
+revisor parte de las FUENTES, no de la conclusion.
+
+**Cuando:** (a) antes de dar el ensayo por **validado** o emitir el **informe final**; (b) antes del
+**corte a PROD**.
+
+**Como:**
+1. Ejecuta \`migrator_audit\` (hechos deterministas desde el estado durable). **Un FAIL bloquea**: no
+   declares \`validado=si\` ni continúes al corte hasta resolverlo (o documentar la excepcion con decision humana).
+2. Lanza un **subagente auditor** (\`subagent\`) con **CONTEXTO FRESCO** (NO le pases tu resumen ni tu
+   conclusion), **solo lecturas**, y este encargo ADVERSARIO:
+   > Eres un auditor independiente. NO confies en el informe ni en el resumen del ejecutor: verifica desde
+   > las FUENTES (\`.migrator/checkpoints.jsonl\`, \`hops.jsonl\`, \`experience.jsonl\`, \`journal.jsonl\`,
+   > \`evidence.jsonl\`, \`audit.jsonl\`), el informe en el workspace y, si aplica, el estado real del DESTINO
+   > (\`migrator_target_state\`). Recalcula los conteos, comprueba la ruta de hops, la evidencia del checklist,
+   > la paridad origen↔destino y la coherencia. Tu trabajo es ENCONTRAR incoherencias, no confirmar. Devuelve
+   > hallazgos con severidad y la evidencia que los sostiene.
+3. Integra los hallazgos: cualquier FAIL o discrepancia sin resolver **impide** declarar el ensayo validado.
+
+**Reglas:**
+- El auditor es **read-only**: no toca origen ni destino (como mucho \`migrator_audit\` y tools de lectura).
+- **No** lo hagas en el mismo turno/razonamiento del ejecutor: contexto **separado**.
+- Si no hay subagentes disponibles (headless), ejecuta \`migrator_audit\`, revisa a mano el informe y anotalo.
+
+**No rodees la auditoria.** Si \`migrator_audit\` da FAIL, se corrige la causa (o se documenta la decision);
+no se "aprueba" el informe saltandose el paso.
+`,
+  };
+}
+
 export async function allSkills(): Promise<SkillContent[]> {
   return [
     await loadRecommendationSkill(),
@@ -304,6 +345,7 @@ export async function allSkills(): Promise<SkillContent[]> {
     planningHeuristicsSkill(),
     readinessChecklistSkill(),
     migrationPlaybookSkill(),
+    auditSkill(),
     storageMountsSkill(),
   ];
 }
@@ -321,6 +363,7 @@ export function installSkills(ctx: SkillsContext): void {
   register(planningHeuristicsSkill());
   register(readinessChecklistSkill());
   register(migrationPlaybookSkill());
+  register(auditSkill());
   register(storageMountsSkill());
   // La skill de recomendaciones se carga desde disco (async): se registra cuando este lista.
   void loadRecommendationSkill().then(register).catch(() => undefined);

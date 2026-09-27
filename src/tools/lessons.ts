@@ -5,6 +5,8 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { addLesson, loadLessons, renderLessons } from '../domain/lessons.js';
+import { stateDir } from '../domain/experience.js';
+import { syncAgentsMd } from '../domain/agents-md.js';
 import { workspaceCwd } from '../infra/session.js';
 import { loadProject } from '../domain/project-config.js';
 
@@ -64,6 +66,12 @@ export function registerLessonTools(ctx: Context): void {
           ...(args.tags ? { tags: args.tags } : {}),
           ...(project ? { project } : {}),
         });
+        // Refresca el bloque gestionado en ~/.dsh/AGENTS.md (memoria nativa del arnes): no rompe la tool.
+        try {
+          await syncAgentsMd(stateDir());
+        } catch {
+          // best-effort
+        }
         return json(lesson);
       },
     }),

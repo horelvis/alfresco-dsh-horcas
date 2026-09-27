@@ -57,6 +57,23 @@ describe('campana de experiencia (multiples intentos)', () => {
     expect(await loadExperiences(dir, 'p')).toHaveLength(1); // una campana, no dos
   });
 
+  it('deduplica por runId: la misma ejecucion es UN intento (el snapshot final manda)', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'exp-'));
+    const base = { project: 'p', stage: 'test' as const, sourceVersion: '7.1.0', targetVersion: '26.2', fingerprint: fp() };
+    await recordAttempt(dir, {
+      ...base,
+      attempt: { id: 'r1', at: '2026-09-19T10:00:00Z', outcome: 'failed', failedStep: 'schema-upgrade', resumeFrom: 'schema-upgrade', steps: [], findings: [] },
+    });
+    // Misma ejecucion (runId), ahora OK: sustituye, no se acumula.
+    const record = await recordAttempt(dir, {
+      ...base,
+      attempt: { id: 'r1', at: '2026-09-19T10:05:00Z', outcome: 'ok', steps: [{ id: 'schema-upgrade', ok: true, durationMs: 5 }], findings: [] },
+    });
+    expect(record.attempts).toHaveLength(1);
+    expect(record.attempts[0]?.outcome).toBe('ok');
+    expect(record.validated).toBe(true);
+  });
+
   it('resumePoint apunta al ultimo intento fallido', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'exp-'));
     await recordAttempt(dir, {

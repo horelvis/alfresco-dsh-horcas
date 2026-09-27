@@ -7,7 +7,11 @@
  * Solo escribe en el estado LOCAL (`.migrator`); nunca toca el origen ni el destino.
  */
 import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+
+/** Tipos de hito que cuentan como "hito" para la memoria (los de razonamiento/estado, no notas sueltas). */
+export const MILESTONE_KINDS = new Set(['assessment', 'strategy', 'plan', 'decision', 'blocker', 'approval']);
 
 export interface JournalEntry {
   at: string;
@@ -42,6 +46,28 @@ export async function loadJournal(state: string, project?: string): Promise<Jour
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line) as JournalEntry)
     .filter((e) => !project || e.project === project);
+}
+
+/**
+ * Lectura SINCRONA de los ultimos hitos (para la seccion de system prompt, que se evalua sin await).
+ * Formato de una linea por hito, del mas reciente al mas antiguo.
+ */
+export function journalTextSync(state: string, project?: string, limit = 12): string {
+  try {
+    const text = readFileSync(journalFile(state), 'utf8');
+    const entries = text
+      .split('\n')
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as JournalEntry)
+      .filter((e) => MILESTONE_KINDS.has(e.kind) && (!project || e.project === project));
+    return entries
+      .slice(-limit)
+      .reverse()
+      .map((e) => `- ${e.at} [${e.kind}] ${e.summary}`)
+      .join('\n');
+  } catch {
+    return '';
+  }
 }
 
 /** Ultima entrada del journal (por proyecto, y opcionalmente de un `kind` concreto). */

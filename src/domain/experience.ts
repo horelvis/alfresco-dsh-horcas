@@ -111,7 +111,12 @@ export async function recordAttempt(
 ): Promise<ExperienceRecord> {
   const id = campaignId(input.project, input.stage);
   const existing = (await loadExperiences(state, input.project)).find((r) => r.id === id);
-  const attempts = [...(existing?.attempts ?? []), input.attempt];
+  // Dedup por runId: una misma ejecucion (p.ej. un hop que llama a run_steps varias veces) es UN
+  // intento. Se sustituye por el snapshot mas reciente para que el estado final del run mande.
+  const prev = existing?.attempts ?? [];
+  const attempts = prev.some((a) => a.id === input.attempt.id)
+    ? prev.map((a) => (a.id === input.attempt.id ? input.attempt : a))
+    : [...prev, input.attempt];
   const validated = attempts.some((a) => a.outcome === 'ok') && fingerprintValidated(input.fingerprint);
   const record: ExperienceRecord = {
     id,

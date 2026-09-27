@@ -81,7 +81,7 @@ export function buildChecklist(input: ChecklistInput): ChecklistItem[] {
   if (requiresSolrRemoval(input.targetVersion, input.targetEdition)) {
     const ok = input.targetSearch.toUpperCase() !== 'SOLR';
     items.push(
-      item('solr-off', 'PRE', 'Solr desmantelado (Enterprise 26: Solr no soportado)', ok ? 'OK' : 'FAIL', `motor destino: ${input.targetSearch}`, REINDEX_APP),
+      item('solr-off', 'PRE', 'Solr desmantelado (26.x: Solr no soportado, CE y EE)', ok ? 'OK' : 'FAIL', `motor destino: ${input.targetSearch}`, REINDEX_APP),
     );
   }
 

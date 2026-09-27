@@ -8,3 +8,6 @@
 - insert:
     - id: alfresco-migrator
       name: ./dist/index.js
+    # Nivel 2: puerta de auditoria (obliga migrator_audit 0 FAIL antes del informe final / corte a PROD).
+    - id: migrator-auditor-gate
+      name: ./harness/auditor-gate.mjs

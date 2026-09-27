@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { measuredPhaseMinutes, renderMigrationReport, type ReportData } from '../src/domain/report.js';
+import { measuredPhaseMinutes, renderMigrationReport, shareAccessUrl, type ReportData } from '../src/domain/report.js';
 import { buildChecklist } from '../src/domain/checklist.js';
 import { requireSupportedUpgradePath } from '../src/domain/upgrade-paths.js';
 import type { Checkpoint } from '../src/domain/checkpoints.js';
@@ -50,5 +50,13 @@ describe('documento de migracion', () => {
     expect(md).not.toContain('Run `dry`');
     expect(md).toContain('| 7.4 → 25.3 |');
     expect(md).toContain('reindex CE 26.2 sin mecanismo');
+  });
+
+  it('anota la URL real de Share (sin proxy, puerto propio 8081)', () => {
+    const noProxy = { target: { baseUrl: 'http://h:8080/alfresco', stack: { share: true } } } as unknown as ProjectConfig;
+    expect(shareAccessUrl(noProxy)).toBe('http://h:8081/share/');
+    const proxy = { target: { baseUrl: 'http://h:8080/alfresco', stack: { share: true, proxy: true } } } as unknown as ProjectConfig;
+    expect(shareAccessUrl(proxy)).toBe('http://h:8080/share/');
+    expect(shareAccessUrl({ target: {} } as unknown as ProjectConfig)).toBeUndefined();
   });
 });

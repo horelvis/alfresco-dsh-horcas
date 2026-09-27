@@ -109,6 +109,13 @@ const jdbcUrl = (db: ComposeRequest['database'], host: string): string => {
   return `jdbc:${engine}://${host}:${db?.port ?? 5432}/${db?.name ?? 'alfresco'}`;
 };
 
+/**
+ * Escalar YAML entre comillas dobles, escapando `\` y `"` internos. Necesario porque valores como
+ * `JAVA_OPTS` llevan comillas propias (p. ej. la URL del broker `-Dmessaging.broker.url="failover:(...)"`,
+ * que catalina.sh evalua con `eval` y sin comillas rompen el shell por los parentesis).
+ */
+const yamlDouble = (value: string): string => `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
 /** Genera el YAML del compose de un hop. Sin secretos embebidos: variables de entorno. */
 export function renderCompose(request: ComposeRequest): string {
   if ((request.deployment || 'compose').toLowerCase() !== 'compose') {
@@ -162,8 +169,8 @@ export function renderCompose(request: ComposeRequest): string {
   lines.push('      - search');
   lines.push('    environment:');
   const repoOpts = [request.memory ? request.memory.javaOpts : '-Xms1g -Xmx2g', ...repositoryJavaOpts(stack, request.acsVersion)];
-  lines.push(`      JAVA_OPTS: "${repoOpts.join(' ')}"`);
-  lines.push(`      JAVA_TOOL_OPTIONS: "${keystoreJavaOpts()}"`);
+  lines.push(`      JAVA_OPTS: ${yamlDouble(repoOpts.join(' '))}`);
+  lines.push(`      JAVA_TOOL_OPTIONS: ${yamlDouble(keystoreJavaOpts())}`);
   lines.push(`      DB_URL: ${jdbcUrl(db, 'postgres')}`);
   lines.push(`      DB_USERNAME: ${user}`);
   lines.push('      DB_PASSWORD: ${POSTGRES_PASSWORD}');
@@ -355,6 +362,22 @@ export async function ensureStackSecrets(workDir: string): Promise<Record<string
   return secrets;
 }
 
+/** Contenido del `.env` del stack (una variable por linea), para que Compose lo resuelva sin entorno. */
+export function renderStackEnv(secrets: Record<string, string>): string {
+  return Object.entries(secrets).map(([key, value]) => `${key}=${value}`).join('\n') + '\n';
+}
+
+/**
+ * Escribe los secretos como `.env` JUNTO al compose remoto. Docker Compose carga `.env` del directorio
+ * del proyecto (el del compose), asi que CUALQUIER `docker compose -f <compose> up -d` (incluido uno
+ * manual o tras un reinicio) resuelve `${POSTGRES_PASSWORD}`/`${ACTIVEMQ_ADMIN_*}` y NO deja credenciales
+ * vacias. Sin esto, un `up` sin el entorno del migrator interpola a vacio (drift detectado en el ensayo).
+ */
+export async function writeStackEnv(host: HostRef, dir: string, secrets: Record<string, string>): Promise<void> {
+  const b64 = Buffer.from(renderStackEnv(secrets), 'utf8').toString('base64');
+  await runShell(host, `mkdir -p "${dir}" && printf '%s' '${b64}' | base64 -d > "${dir}/.env" && chmod 600 "${dir}/.env"`);
+}
+
 /**
  * Keystore de METADATOS por defecto de las imagenes Docker de ACS (los valores publicos del compose
  * oficial y del ORIGEN (7.1)). Deben ser LOS MISMOS que en el origen: las propiedades cifradas de la
@@ -441,7 +464,11 @@ export function manualCommands(request: ComposeRequest, dstDir?: string): string
     commands.push(`sudo mkdir -p "${dstDir}/alf-data" "${dstDir}/config"${request.pgBind ? ` "${dstDir}/pg-data"` : ''}`);
   }
   commands.push(`printf '%s' '${b64}' | base64 -d | sudo tee ${file} >/dev/null`);
-  if (dstDir) commands.push(`sudo cp ${globalFile} "${dstDir}/config/alfresco-global.properties"`);
+  if (dstDir) {
+    commands.push(`sudo cp ${globalFile} "${dstDir}/config/alfresco-global.properties"`);
+    // Deja los secretos junto al compose del DESTINO: un `up` manual posterior no pierde las credenciales.
+    commands.push(`sudo install -D -m 600 ${envFile} "${dstDir}/compose/.env"`);
+  }
   commands.push(`sudo docker compose -p "${composeProjectName(request.projectName)}" down --remove-orphans`);
   commands.push(
     `sudo DOCKER_CONFIG=$(d=$(mktemp -d) && printf '{}' > "$d/config.json" && echo "$d") docker compose --env-file ${envFile} -p "${composeProjectName(request.projectName)}" -f ${file} up -d --remove-orphans`,
@@ -562,6 +589,8 @@ export async function provisionCompose(
   if (request.dataDir) {
     const remote = hopComposeFile(request.dataDir, request.acsVersion);
     await writeComposeRemote(host, remote, content, previous);
+    // `.env` junto al compose: el stack queda AUTOCONTENIDO (un `up` manual resuelve los secretos).
+    await writeStackEnv(host, path.dirname(remote), secrets);
     composeArg = `-f "${remote}"`;
   }
   const services = [INFRA_SERVICES, ...stackInfraServices(request.stack)].join(' ');

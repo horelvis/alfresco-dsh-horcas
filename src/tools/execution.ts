@@ -59,7 +59,7 @@ export function registerExecutionTools(ctx: Context): void {
     defineTool({
       name: 'migrator_run_steps',
       description:
-        'Ejecuta una composicion de pasos en el DESTINO (aprobacion requerida). Soporta resume y dry-run. (Los requisitos de PROD solo aplican si el proyecto tiene stage=prod.)',
+        'Ejecuta una composicion de pasos en el DESTINO (escritura real; requiere aprobacion).',
       parameters: {
         steps: { type: 'array', items: { type: 'string' }, required: true, description: 'Ids en orden, p.ej. [preflight-target, backup-source-db]' },
         execute: { type: 'boolean', description: 'false = dry-run (por defecto)' },

@@ -8,6 +8,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
 import { lessonsTextSync } from './domain/lessons.js';
+import { journalTextSync } from './domain/journal.js';
+import { stateDir } from './domain/experience.js';
 
 interface SystemPromptContext {
   systemPrompt: {
@@ -82,6 +84,15 @@ export function installPrompt(ctx: SystemPromptContext): void {
     text: () => {
       const lessons = lessonsTextSync();
       return lessons ? `Lecciones aprendidas (memoria compartida entre proyectos):\n${lessons}` : '';
+    },
+  });
+  // Hitos del journal del WORKSPACE actual: memoria durable entre chats del mismo proyecto.
+  ctx.systemPrompt.section({
+    name: 'alfresco-migrator-journal',
+    order: -996,
+    text: () => {
+      const milestones = journalTextSync(stateDir());
+      return milestones ? `Hitos recientes de esta migracion (journal); "continuar" retoma desde aqui:\n${milestones}` : '';
     },
   });
 }

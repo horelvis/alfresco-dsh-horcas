@@ -82,7 +82,7 @@ describe('politica de seguridad', () => {
     );
     expect(prov.title).toContain('Provisiona el DESTINO en Docker Compose');
     expect(prov.details.join(' ')).toContain('/p/acme.yaml');
-    expect(prov.details.join(' ')).toContain('EXECUTE');
+    expect(prov.details.join(' ')).toContain('ESCRITURA REAL');
     expect(prov.body).toContain('ORIGEN');
     expect(prov.reason).not.toContain('\n');
 
@@ -92,9 +92,9 @@ describe('politica de seguridad', () => {
       'Ejecuta una composicion de pasos en el DESTINO.',
     );
     const runDetails = run.details.join(' | ');
-    expect(runDetails).toContain('copy-content — Copia el content store del origen al destino');
-    expect(runDetails).toContain('reindex — Regenera el indice de busqueda del DESTINO');
-    expect(runDetails).toContain('dry-run');
+    expect(runDetails).toContain('copy-content: Copia el content store del ORIGEN al DESTINO');
+    expect(runDetails).toContain('reindex: Regenera el indice de busqueda (solo en la version final)');
+    expect(runDetails).toContain('simulacion (dry-run)');
 
     const decision = decide(
       { name: 'migrator_target', arguments: { project: '/p.yaml' } },

@@ -42,6 +42,15 @@ describe('autoproteccion: el agente no modifica el plugin ni el arnes', () => {
     expect(guardReason({ name: 'write', arguments: { file_path: '/srv/ws/informe.md' } })).toBeUndefined();
   });
 
+  it('no confunde palabras dentro de comillas (patron de grep) con escritura', async () => {
+    const { selfModificationReason } = await import('../src/security/policy.js');
+    expect(selfModificationReason('grep -rn "modelsJar\\|scp\\|rsync.*jar" ~/git/dsh-alfresco-migrator/src/domain/steps.ts')).toBeUndefined();
+    expect(selfModificationReason('cd ~/git/dsh-alfresco-migrator && grep -rn "cp\\|mv\\|rm" src')).toBeUndefined();
+    // Con comillas, una mutacion REAL sigue bloqueada: el verbo va FUERA de comillas.
+    expect(selfModificationReason('rm "/srv/code/dsh-alfresco-migrator/src/a.ts"')).toBeDefined();
+    expect(selfModificationReason('echo x > "/srv/code/deepseek-harness/lib/a.js"')).toBeDefined();
+  });
+
   it('permite leer el plugin/arnes y trabajar en el workspace', async () => {
     const { selfModificationReason } = await import('../src/security/policy.js');
     expect(selfModificationReason('grep -rn validateModelsJar ~/git/dsh-alfresco-migrator/src')).toBeUndefined();

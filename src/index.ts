@@ -32,6 +32,7 @@ import { registerHelpTools } from './tools/help.js';
 import { registerJournalTools } from './tools/journal.js';
 import { registerLessonTools } from './tools/lessons.js';
 import { registerReportTools } from './tools/report.js';
+import { registerAuditTools } from './tools/audit.js';
 import { registerSourceStackTools } from './tools/source-stack.js';
 import { registerTargetStateTools } from './tools/target-state.js';
 
@@ -47,6 +48,7 @@ export function apply(ctx: Context): void {
   void installSkills(ctx as unknown as SkillsContext);
   registerReadTools(ctx);
   registerReportTools(ctx);
+  registerAuditTools(ctx);
   registerSourceStackTools(ctx);
   registerTargetStateTools(ctx);
   registerCoherenceTools(ctx);

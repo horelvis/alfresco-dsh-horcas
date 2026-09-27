@@ -15,6 +15,7 @@ import { requireSupportedUpgradePath } from '../domain/upgrade-paths.js';
 import { checkHopAlignment, loadHopProgress, nextHop } from '../domain/hops.js';
 import { discoverRest } from '../domain/assessment.js';
 import { appendJournal, latestJournal, loadJournal } from '../domain/journal.js';
+import { syncAgentsMd } from '../domain/agents-md.js';
 import { backupStatus, nextAction, recentSessions } from '../domain/resume.js';
 
 const text = (value: string) => [{ type: 'text' as const, text: value }];
@@ -49,6 +50,12 @@ export function registerJournalTools(ctx: Context): void {
           summary: args.summary,
           ...(args.data ? { data: args.data as Record<string, unknown> } : {}),
         });
+        // Refresca el bloque gestionado en ~/.dsh/AGENTS.md (memoria nativa del arnes): best-effort.
+        try {
+          await syncAgentsMd(stateDir());
+        } catch {
+          // best-effort
+        }
         return json(entry);
       },
     }),

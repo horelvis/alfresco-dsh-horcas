@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { renderCompose, composeImages, projectToComposeRequest } from '../src/domain/provision.js';
+import yamlLib from 'js-yaml';
+import { renderCompose, renderStackEnv, composeImages, projectToComposeRequest } from '../src/domain/provision.js';
 import { proxyConfig, repositoryJavaOpts, shareImage } from '../src/domain/final-stack.js';
 import type { ProjectConfig } from '../src/domain/project-config.js';
 
@@ -10,6 +11,10 @@ describe('stack de la version final', () => {
   it('imagenes del compose oficial y credenciales del broker en 26.x', () => {
     expect(shareImage({}, '26.2', 'CE')).toBe('alfresco/alfresco-share:26.2.2');
     expect(repositoryJavaOpts(undefined, '26.2').join(' ')).toContain('-Dmessaging.broker.username=${ACTIVEMQ_ADMIN_LOGIN}');
+    // La URL del broker va CITADA dentro de JAVA_OPTS (catalina.sh la evalua con `eval`).
+    expect(repositoryJavaOpts(undefined, '26.2').join(' ')).toContain(
+      '-Dmessaging.broker.url="failover:(nio://activemq:61616)?timeout=3000"',
+    );
     expect(repositoryJavaOpts(undefined, '25.3')).toEqual([]);
     expect(composeImages(request)).toEqual([
       'postgres:15', 'alfresco/alfresco-activemq:6.2.9-jre17-rockylinux8', 'docker.elastic.co/elasticsearch/elasticsearch:8.11.3',
@@ -26,6 +31,13 @@ describe('stack de la version final', () => {
     expect(yaml).toContain('FROM alfresco/alfresco-content-repository-community:26.2.0');
     expect(yaml).toContain('CSRF_FILTER_REFERER: http://192.0.2.10:8080/share/.*');
     expect(yaml).toContain('-DlocalTransform.core-aio.url=http://transform-core-aio:8090/');
+    // JAVA_OPTS sale como escalar YAML con las comillas internas ESCAPADAS y parses valido; el valor
+    // resultante conserva la URL CITADA (lo que catalina.sh necesita para no romper en `eval`).
+    expect(yaml).toContain('-Dmessaging.broker.url=\\"failover:(nio://activemq:61616)?timeout=3000\\"');
+    const doc = yamlLib.load(yaml) as { services: { alfresco: { environment: { JAVA_OPTS: string } } } };
+    expect(doc.services.alfresco.environment.JAVA_OPTS).toContain(
+      '-Dmessaging.broker.url="failover:(nio://activemq:61616)?timeout=3000"',
+    );
     expect(yaml.match(/"8080:8080"/g)?.length).toBe(1);
   });
 
@@ -40,6 +52,11 @@ describe('stack de la version final', () => {
     expect(conf).toContain('resolver 127.0.0.11');
     expect(conf).toContain('location /share/ { proxy_pass $share;');
     expect(conf).toContain('api/solr/ { return 403; }');
+  });
+
+  it('renderStackEnv deja las claves del compose en el .env del stack (sin entorno, sin vacios)', () => {
+    const env = renderStackEnv({ POSTGRES_PASSWORD: 'p', ACTIVEMQ_ADMIN_LOGIN: 'admin', ACTIVEMQ_ADMIN_PASSWORD: 'a' });
+    expect(env).toBe('POSTGRES_PASSWORD=p\nACTIVEMQ_ADMIN_LOGIN=admin\nACTIVEMQ_ADMIN_PASSWORD=a\n');
   });
 });
 
