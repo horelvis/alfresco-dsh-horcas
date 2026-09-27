@@ -67,7 +67,7 @@ export DEEPSEEK_DEFAULT_MODEL="${DEEPSEEK_DEFAULT_MODEL:-${OPENAI_CHAT_OPTIONS_M
 export OPENCODE_GO_API_KEY="${OPENCODE_GO_API_KEY:-${OPENAI_API_KEY:-}}"
 
 # Personalizacion de la UI web (titulo de la pestana).
-export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Alfresco DSH Horcas}"
+export DSH_CLIENT_TITLE="${DSH_CLIENT_TITLE:-Into the Unknown}"
 # El sidebar muestra la etiqueta "DSH Local Build" (fallback de build no oficial).
 # Para mostrar el brand oficial de dsh en lugar de esa etiqueta, descomenta:
 # export DSH_CLIENT_BUILD_PROFILE=official
