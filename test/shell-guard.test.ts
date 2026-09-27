@@ -59,6 +59,36 @@ describe('autoproteccion: el agente no modifica el plugin ni el arnes', () => {
   });
 });
 
+describe('enforcer del rol auditor (solo lectura determinista)', () => {
+  const agentWith = (text: string) => ({
+    session: { surface: { nodes: [1] }, eventAt: () => ({ type: 'user/message', data: { content: [{ type: 'text', text }] } }) },
+  });
+
+  it('deniega escritura del migrator, edicion de ficheros y redireccion al auditor', () => {
+    const agent = agentWith('[[MIGRATOR-AUDITOR]] revisa el ensayo');
+    expect(guardReason({ name: 'migrator_run_steps', agent, arguments: {} })).toMatch(/Auditor en SOLO LECTURA/);
+    expect(guardReason({ name: 'migrator_provision', agent, arguments: {} })).toMatch(/Auditor/);
+    expect(guardReason({ name: 'write', agent, arguments: { file_path: '/tmp/x' } })).toMatch(/Auditor/);
+    expect(guardReason({ name: 'bash', agent, arguments: { command: 'echo x > /tmp/y' } })).toMatch(/Auditor/);
+    expect(guardReason({ name: 'bash', agent, arguments: { command: 'rm -rf .migrator' } })).toMatch(/Auditor/);
+    expect(guardReason({ name: 'bash', agent, arguments: { command: "sed -i 's/FAIL/OK/' report.md" } })).toMatch(/Auditor/);
+    expect(guardReason({ name: 'bash', agent, arguments: { command: 'grep -c "rm" .migrator/audit.jsonl 2>/dev/null' } })).toBeUndefined();
+    // Lectura permitida.
+    expect(guardReason({ name: 'migrator_audit', agent, arguments: {} })).toBeUndefined();
+    expect(guardReason({ name: 'read', agent, arguments: {} })).toBeUndefined();
+  });
+
+  it('reconoce al teammate "auditor" de Agent Teams', () => {
+    const agent = agentWith('You are teammate "auditor".\n\nrevisa el informe');
+    expect(guardReason({ name: 'migrator_run_steps', agent, arguments: {} })).toMatch(/Auditor/);
+  });
+
+  it('un ejecutor normal NO se marca como auditor', () => {
+    const agent = agentWith('inicia migracion');
+    expect(guardReason({ name: 'migrator_run_steps', agent, arguments: {} })).toBeUndefined();
+  });
+});
+
 describe('redireccion: no confundir => / -> / >= con escribir', () => {
   it('las consultas de lectura con funciones flecha no son escritura en el plugin', async () => {
     const { selfModificationReason, shellMutationReason } = await import('../src/security/policy.js');

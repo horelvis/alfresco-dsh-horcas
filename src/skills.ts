@@ -305,7 +305,7 @@ export function auditSkill(): SkillContent {
   return {
     name: 'alfresco-migration-audit',
     description:
-      'Rol de REVISOR independiente: separa quien ejecuta de quien verifica. Cargar antes de dar el ensayo por validado, antes de emitir el informe final y antes del corte a PROD. Ejecuta migrator_audit (hechos) y lanza un subagente auditor de solo lectura con contexto fresco.',
+      'Rol de REVISOR independiente: separa quien ejecuta de quien verifica. Cargar antes de dar el ensayo por validado, antes de emitir el informe final y antes del corte a PROD. Ejecuta migrator_audit (hechos) y lanza un teammate/subagente auditor de SOLO LECTURA con contexto fresco.',
     content: `# Auditoria de la migracion (rol de REVISOR independiente)
 
 **Proposito:** separar quien EJECUTA de quien VERIFICA. El ejecutor no audita su propio resumen; el
@@ -317,8 +317,11 @@ revisor parte de las FUENTES, no de la conclusion.
 **Como:**
 1. Ejecuta \`migrator_audit\` (hechos deterministas desde el estado durable). **Un FAIL bloquea**: no
    declares \`validado=si\` ni continúes al corte hasta resolverlo (o documentar la excepcion con decision humana).
-2. Lanza un **subagente auditor** (\`subagent\`) con **CONTEXTO FRESCO** (NO le pases tu resumen ni tu
-   conclusion), **solo lecturas**, y este encargo ADVERSARIO:
+2. Lanza un **revisor independiente** con **CONTEXTO FRESCO** (NO le pases tu resumen ni tu conclusion) y
+   **el prompt debe EMPEZAR con la marca \`[[MIGRATOR-AUDITOR]]\`** (activa el enforcer de solo lectura del
+   plugin). Preferente, si hay Agent Teams: \`spawn_teammate\` con \`name="auditor"\`, \`context="fresh"\` y el
+   prompt con la marca; si no, \`subagent\` con la marca. Encargo ADVERSARIO:
+   > [[MIGRATOR-AUDITOR]]
    > Eres un auditor independiente. NO confies en el informe ni en el resumen del ejecutor: verifica desde
    > las FUENTES (\`.migrator/checkpoints.jsonl\`, \`hops.jsonl\`, \`experience.jsonl\`, \`journal.jsonl\`,
    > \`evidence.jsonl\`, \`audit.jsonl\`), el informe en el workspace y, si aplica, el estado real del DESTINO
@@ -328,9 +331,11 @@ revisor parte de las FUENTES, no de la conclusion.
 3. Integra los hallazgos: cualquier FAIL o discrepancia sin resolver **impide** declarar el ensayo validado.
 
 **Reglas:**
-- El auditor es **read-only**: no toca origen ni destino (como mucho \`migrator_audit\` y tools de lectura).
+- El auditor es **SOLO LECTURA**, y esta FORZADO en el plugin (no depende del prompt): con la marca
+  \`[[MIGRATOR-AUDITOR]]\` (o el teammate \`auditor\`) se DENIEGAN las tools de escritura del migrator, la
+  mutacion de ficheros y la redireccion de shell. Si intenta escribir, es un error del flujo, no lo apruebes.
 - **No** lo hagas en el mismo turno/razonamiento del ejecutor: contexto **separado**.
-- Si no hay subagentes disponibles (headless), ejecuta \`migrator_audit\`, revisa a mano el informe y anotalo.
+- Si no hay teammates/subagentes disponibles (headless), ejecuta \`migrator_audit\`, revisa a mano el informe y anotalo.
 
 **No rodees la auditoria.** Si \`migrator_audit\` da FAIL, se corrige la causa (o se documenta la decision);
 no se "aprueba" el informe saltandose el paso.

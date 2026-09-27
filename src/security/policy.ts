@@ -326,8 +326,68 @@ export function shellMutationReason(command: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Marca del AUDITOR en sus primeros mensajes: la anade la skill al prompt del revisor. Un teammate de
+ * Agent Teams lleva `You are teammate "<nombre>"` (nombre por defecto `auditor`); el subagente lleva la
+ * marca explicita `[[MIGRATOR-AUDITOR]]`.
+ */
+const auditorMarker = (env: NodeJS.ProcessEnv = process.env): RegExp => {
+  const name = (env.MIGRATOR_AUDITOR_NAME ?? 'auditor').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`You are teammate "${name}"|\\[\\[MIGRATOR-AUDITOR\\]\\]`);
+};
+
+const auditorSessionCache = new WeakMap<object, boolean>();
+
+/** True si el agente de la sesion es un AUDITOR (marca en sus primeros mensajes de usuario). */
+export function isAuditorAgent(agent: unknown): boolean {
+  if (agent === null || typeof agent !== 'object') return false;
+  const cached = auditorSessionCache.get(agent as object);
+  if (cached !== undefined) return cached;
+  let isAuditor = false;
+  try {
+    const session = (agent as { session?: { surface?: { nodes?: readonly unknown[] }; eventAt?: (seq: unknown) => unknown } }).session;
+    const nodes = session?.surface?.nodes ?? [];
+    const marker = auditorMarker();
+    for (const seq of nodes.slice(0, 8)) {
+      const event = session?.eventAt?.(seq) as { type?: string; data?: { content?: Array<{ text?: string }> } } | undefined;
+      if (event?.type !== 'user/message') continue;
+      const text = (event.data?.content ?? []).map((c) => c.text ?? '').join('\n');
+      if (marker.test(text)) {
+        isAuditor = true;
+        break;
+      }
+    }
+  } catch {
+    // sesion no inspeccionable: no se asume auditor
+  }
+  auditorSessionCache.set(agent as object, isAuditor);
+  return isAuditor;
+}
+
+/**
+ * Enforcer del rol auditor: un agente AUDITOR es SOLO LECTURA (determinista, no depende del prompt).
+ * Deniega las tools de escritura del migrator, la mutacion de ficheros y el shell que escribe (rm, mv,
+ * sed -i, SQL de escritura, redireccion...), tambien en local.
+ */
+export function auditorReadOnlyReason(exec: ToolExec): string | undefined {
+  if (!isAuditorAgent(exec.agent)) return undefined;
+  if (isWrite(exec.name) || FILE_WRITE_TOOLS.has(exec.name)) {
+    return `Auditor en SOLO LECTURA: '${exec.name}' escribe; usa las tools de lectura (migrator_audit, migrator_target_state, read, grep).`;
+  }
+  if (SHELL_TOOLS.has(exec.name)) {
+    const args = exec.arguments as { command?: unknown; script?: unknown } | undefined;
+    const command = typeof args?.command === 'string' ? args.command : typeof args?.script === 'string' ? args.script : '';
+    if (command && REMOTE_FILE_MUTATION.test(blankQuoted(command))) {
+      return 'Auditor en SOLO LECTURA: comando de shell que escribe no permitido.';
+    }
+  }
+  return undefined;
+}
+
 /** Guard monotono: bloquea escritura que apunte al origen (inmutable) y cambios por shell fuera del migrator. */
 export function guardReason(exec: ToolExec): string | undefined {
+  const auditor = auditorReadOnlyReason(exec);
+  if (auditor) return auditor;
   if (FILE_WRITE_TOOLS.has(exec.name)) {
     const args = exec.arguments as { file_path?: unknown; path?: unknown } | undefined;
     const file = typeof args?.file_path === 'string' ? args.file_path : typeof args?.path === 'string' ? args.path : '';
