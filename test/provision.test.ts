@@ -13,6 +13,7 @@ import {
   mergeStackEnv,
   ensureOperatorStackEnv,
   renderCompose,
+  searchCommunity,
   shouldSkipProvision,
   stopTargets,
 } from '../src/domain/provision.js';
@@ -217,9 +218,60 @@ describe('ensureStackSecrets', () => {
     const first = await ensureStackSecrets(dir);
     expect(first.POSTGRES_PASSWORD).toMatch(/^[0-9a-f]{24}$/);
     expect(first.ACTIVEMQ_ADMIN_LOGIN).toBe('admin');
+    expect(first.SEARCH_SHARED_SECRET).toMatch(/^[0-9a-f]{32}$/);
     const second = await ensureStackSecrets(dir);
     expect(second.POSTGRES_PASSWORD).toBe(first.POSTGRES_PASSWORD);
+    expect(second.SEARCH_SHARED_SECRET).toBe(first.SEARCH_SHARED_SECRET);
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+describe('Search Community (26.x CE): indice por sondeo (batch indexer)', () => {
+  const scRequest = { ...request, acsVersion: '26.2', edition: 'CE', search: { engine: 'ELASTICSEARCH' }, stack: { transform: true } };
+  const secrets = { POSTGRES_PASSWORD: 'pg', SEARCH_SHARED_SECRET: 'shared' };
+
+  it('searchCommunity solo para CE 26.2+ con ES/OpenSearch', () => {
+    expect(searchCommunity(scRequest)).toBe(true);
+    expect(searchCommunity({ ...scRequest, edition: 'EE' })).toBe(false);
+    expect(searchCommunity({ ...scRequest, acsVersion: '25.3' })).toBe(false);
+    expect(searchCommunity({ ...scRequest, search: { engine: 'solr' } })).toBe(false);
+  });
+
+  it('globalProperties activa el subsistema elasticsearch y el secreto compartido', () => {
+    const props = globalProperties(scRequest, { ...secrets, POSTGRES_PASSWORD: 'secret' });
+    expect(props).toContain('index.subsystem.name=elasticsearch');
+    expect(props).toContain('elasticsearch.host=search');
+    expect(props).toContain('elasticsearch.createIndexIfNotExists=true');
+    expect(props).toContain('solr.secureComms=secret');
+    expect(props).toContain('solr.sharedSecret=shared');
+    // En versiones anteriores no se activa (Solr/EE).
+    const old = globalProperties({ ...scRequest, acsVersion: '25.3' }, secrets);
+    expect(old).not.toContain('index.subsystem.name');
+  });
+
+  it('el compose incluye el batch indexer (maxGapAge=0) y el transform para el contenido', () => {
+    const yaml = renderCompose(scRequest);
+    expect(yaml).toContain('  batch-indexer:');
+    expect(yaml).toContain('alfresco/alfresco-elasticsearch-batch-indexing:5.7.1');
+    expect(yaml).toContain('ALFRESCO_REINDEX_CONTINUOUS_MAXGAPAGE: "0"');
+    expect(yaml).toContain('SPRING_ELASTICSEARCH_URIS: http://search:9200');
+    expect(yaml).toContain('ALFRESCO_CONTENT_TRANSFORM_SHAREDSECRET: ${SEARCH_SHARED_SECRET}');
+    expect(yaml).toContain('transform-core-aio:8090/transform/config');
+  });
+
+  it('sin transform no hay extraccion de texto: se indexan metadatos/path (aviso explicito)', () => {
+    const yaml = renderCompose({ ...scRequest, stack: { share: true } });
+    expect(yaml).toContain('ALFRESCO_REINDEX_CONTENTINDEXINGENABLED: "false"');
+  });
+
+  it('monta el prefix-map solo si se aporta la ruta en el DESTINO', () => {
+    const yaml = renderCompose({ ...scRequest, reindexPrefixesFile: '/d/reindex/prefixes.json' });
+    expect(yaml).toContain('-Dalfresco.reindex.prefixes-file=file:/config/prefixes.json');
+    expect(yaml).toContain('/d/reindex/prefixes.json:/config/prefixes.json:ro');
+  });
+
+  it('no incluye el indexador fuera del hop final (sin stack)', () => {
+    expect(renderCompose({ ...scRequest, stack: undefined })).not.toContain('batch-indexer:');
   });
 });
 

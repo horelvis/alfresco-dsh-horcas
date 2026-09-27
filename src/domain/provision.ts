@@ -26,6 +26,7 @@ import {
   transformImage,
   type FinalStack,
 } from './final-stack.js';
+import { BATCH_INDEXER_IMAGE, DEFAULT_MAIN_INDEX, isSearchCommunity } from './reindex.js';
 
 export interface ComposeRequest {
   projectName: string;
@@ -50,7 +51,19 @@ export interface ComposeRequest {
   stack?: FinalStack;
   /** JAR de modelos de contenido EN EL DESTINO: se monta en TODOS los hops. */
   modelsJar?: string;
+  /**
+   * Ruta EN EL DESTINO del `prefixes-file.json` COMPLETO del indexador (Search Community): se monta en el
+   * batch indexer. Sin el, un namespace propio ausente deja nodos SIN indexar en silencio.
+   */
+  reindexPrefixesFile?: string;
 }
+
+/** `true` si el destino usa el indexador por sondeo de Search Community (CE 26.2+ con ES/OpenSearch). */
+export const searchCommunity = (request: ComposeRequest): boolean =>
+  isSearchCommunity(request.acsVersion, request.edition, request.search?.engine ?? '');
+
+/** Servicio del batch indexer en el compose (Search Community). */
+export const BATCH_INDEXER_SERVICE = 'batch-indexer';
 
 /** `true` si el tag de la imagen es PRE-RELEASE (Alpha/Beta/RC/SNAPSHOT/M): no usar en migracion. */
 export function isPrereleaseImage(image: string): boolean {
@@ -225,6 +238,41 @@ export function renderCompose(request: ComposeRequest): string {
     lines.push('    environment:');
     lines.push('      JAVA_OPTS: "-XX:MinRAMPercentage=50 -XX:MaxRAMPercentage=80"');
   }
+  // Search Community (26.2+): el indice lo mantiene el batch indexer por SONDEO (no migra el historico por
+  // si solo; el paso `reindex` siembra el cursor). Solo en el hop FINAL (donde va el stack).
+  if (searchCommunity(request) && stack) {
+    const name = db?.name ?? 'alfresco';
+    const user = db?.user ?? 'alfresco';
+    lines.push(`  ${BATCH_INDEXER_SERVICE}:`);
+    lines.push(`    image: ${BATCH_INDEXER_IMAGE}`);
+    lines.push('    mem_limit: 1024m');
+    lines.push('    depends_on:');
+    lines.push('      - postgres');
+    lines.push('      - search');
+    lines.push('    environment:');
+    lines.push(`      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${name}`);
+    lines.push(`      SPRING_DATASOURCE_USERNAME: ${user}`);
+    lines.push('      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}');
+    lines.push('      SPRING_ELASTICSEARCH_URIS: http://search:9200');
+    lines.push(`      ELASTICSEARCH_INDEXNAME: ${DEFAULT_MAIN_INDEX}`);
+    lines.push('      ALFRESCO_ACS_URL: http://alfresco:8080');
+    lines.push('      ALFRESCO_CONTENT_TRANSFORM_SHAREDSECRET: ${SEARCH_SHARED_SECRET}');
+    // Carga inicial del historico: sin `maxGapAge=0` el cursor sembrado (mas antiguo que 24h) se descarta.
+    lines.push('      ALFRESCO_REINDEX_CONTINUOUS_MAXGAPAGE: "0"');
+    lines.push('      ALFRESCO_REINDEX_CONTINUOUS_MAXWINDOW: 7d');
+    if (stack.transform) {
+      lines.push('      ALFRESCO_ACCEPTEDCONTENTMEDIATYPESCACHE_BASEURL: http://transform-core-aio:8090/transform/config');
+    } else {
+      // Sin transform-core-aio no hay extraccion de texto: se indexan metadatos y path, NO contenido.
+      lines.push('      ALFRESCO_REINDEX_CONTENTINDEXINGENABLED: "false"');
+    }
+    if (request.reindexPrefixesFile) {
+      // Mapa COMPLETO de namespaces (incluye los propios): reemplaza, no amplia, los 60 de Alfresco.
+      lines.push('      JAVA_OPTS: "-Dalfresco.reindex.prefixes-file=file:/config/prefixes.json"');
+      lines.push('    volumes:');
+      lines.push(`      - ${request.reindexPrefixesFile}:/config/prefixes.json:ro`);
+    }
+  }
   if (stack?.proxy) {
     lines.push('  proxy:');
     lines.push('    image: nginx:stable-alpine');
@@ -357,6 +405,9 @@ export async function ensureStackSecrets(workDir: string): Promise<Record<string
     POSTGRES_PASSWORD: current.POSTGRES_PASSWORD || randomBytes(12).toString('hex'),
     ACTIVEMQ_ADMIN_LOGIN: current.ACTIVEMQ_ADMIN_LOGIN || 'admin',
     ACTIVEMQ_ADMIN_PASSWORD: current.ACTIVEMQ_ADMIN_PASSWORD || randomBytes(12).toString('hex'),
+    // Secreto compartido del endpoint de extraccion de texto (repo <-> batch indexer). Obligatorio en 26.x:
+    // `solr.secureComms=secret` ya no acepta `none`. Debe COINCIDIR en repo e indexador.
+    SEARCH_SHARED_SECRET: current.SEARCH_SHARED_SECRET || randomBytes(16).toString('hex'),
   };
   await mkdir(workDir, { recursive: true });
   await writeFile(file, Object.entries(secrets).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', 'utf8');
@@ -408,6 +459,20 @@ const keystoreJavaOpts = (): string =>
 export function globalProperties(request: ComposeRequest, secrets: Record<string, string>): string {
   const name = request.database?.name ?? 'alfresco';
   const user = request.database?.user ?? 'alfresco';
+  // Search Community (26.2+): el repositorio usa el subsistema `elasticsearch` (no Solr). Es el que CREA el
+  // indice y su mapping; sin `index.subsystem.name` la busqueda no funciona en 26.x. El texto extraido
+  // (endpoint solr/textContent) va protegido por `solr.secureComms=secret` + `solr.sharedSecret`.
+  const searchProps = searchCommunity(request)
+    ? [
+        'index.subsystem.name=elasticsearch',
+        'elasticsearch.host=search',
+        'elasticsearch.port=9200',
+        `elasticsearch.indexName=${DEFAULT_MAIN_INDEX}`,
+        'elasticsearch.createIndexIfNotExists=true',
+        'solr.secureComms=secret',
+        `solr.sharedSecret=${secrets.SEARCH_SHARED_SECRET ?? ''}`,
+      ]
+    : [];
   return [
     'db.driver=org.postgresql.Driver',
     `db.url=jdbc:postgresql://postgres:5432/${name}`,
@@ -415,6 +480,7 @@ export function globalProperties(request: ComposeRequest, secrets: Record<string
     `db.password=${secrets.POSTGRES_PASSWORD ?? ''}`,
     'dir.root=/usr/local/tomcat/alf_data',
     ...Object.entries(DEFAULT_KEYSTORE).map(([key, value]) => `${key}=${value}`),
+    ...searchProps,
     '',
   ].join('\n');
 }
@@ -572,6 +638,7 @@ export function composeImages(request: ComposeRequest): string[] {
   const stack = request.stack;
   if (stack?.share || request.withShare) images.push(shareImage(stack ?? {}, request.acsVersion, request.edition));
   if (stack?.transform) images.push(transformImage(stack, request.acsVersion));
+  if (searchCommunity(request) && stack) images.push(BATCH_INDEXER_IMAGE);
   if (stack?.proxy) images.push('nginx:stable-alpine');
   // El repositorio va el ULTIMO (provision-hop lo usa para el control de pre-release).
   images.push(request.acsImage ?? repositoryImage(request.edition, request.acsVersion));

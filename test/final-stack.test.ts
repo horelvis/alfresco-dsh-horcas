@@ -18,8 +18,8 @@ describe('stack de la version final', () => {
     expect(repositoryJavaOpts(undefined, '25.3')).toEqual([]);
     expect(composeImages(request)).toEqual([
       'postgres:15', 'alfresco/alfresco-activemq:6.2.9-jre17-rockylinux8', 'docker.elastic.co/elasticsearch/elasticsearch:8.17.0',
-      'alfresco/alfresco-share:26.2.2', 'alfresco/alfresco-transform-core-aio:5.4.4', 'nginx:stable-alpine',
-      'alfresco/alfresco-content-repository-community:26.2.0',
+      'alfresco/alfresco-share:26.2.2', 'alfresco/alfresco-transform-core-aio:5.4.4', 'alfresco/alfresco-elasticsearch-batch-indexing:5.7.1',
+      'nginx:stable-alpine', 'alfresco/alfresco-content-repository-community:26.2.0',
     ]);
   });
 
@@ -64,7 +64,7 @@ describe('validacion con docker (si esta disponible)', () => {
   it('docker compose config acepta el compose del stack final', async () => {
     const { runShell, runShellWithInput } = await import('../src/infra/exec.js');
     if ((await runShell({ name: 'local' }, 'docker compose version')).exitCode !== 0) return;
-    const env = "POSTGRES_PASSWORD=x ACTIVEMQ_ADMIN_LOGIN=admin ACTIVEMQ_ADMIN_PASSWORD=y";
+    const env = "POSTGRES_PASSWORD=x ACTIVEMQ_ADMIN_LOGIN=admin ACTIVEMQ_ADMIN_PASSWORD=y SEARCH_SHARED_SECRET=z";
     const result = await runShellWithInput({ name: 'local' }, `${env} docker compose -f - config -q`, renderCompose(request));
     expect(result.stderr.trim()).toBe('');
     expect(result.exitCode).toBe(0);

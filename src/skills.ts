@@ -268,9 +268,11 @@ preguntes por reindex en un hop intermedio.
 
 **Como se regenera en 26.x CE (Search Community, \`elasticsearch\`/\`opensearch\`):** el indice lo mantiene
 \`alfresco-elasticsearch-batch-indexing\` por SONDEO (30 s); NO indexa el historico por si solo: arranca en
-\`now - overlap\`. El paso \`reindex\` del plugin **siembra el cursor (watermark \`reindexByDate\`) en el primer
-commit de la BD** (\`min(commit_time_ms)\`) en el indice de estado \`alfresco-reindex-state\`, para que recorra
-el backlog migrado. Requisitos que decide/verifica el humano (no los cambia el migrator):
+\`now - overlap\`. El stack generado del hop final ya lo incluye (servicio \`batch-indexer\`, arrancado en
+\`schema-upgrade\` tras el repositorio) y activa el subsistema \`elasticsearch\` en el repo. El paso \`reindex\`
+del plugin **siembra el cursor (watermark \`reindexByDate\`) en el primer commit de la BD**
+(\`min(commit_time_ms)\`) en el indice de estado \`alfresco-reindex-state\`, para que recorra el backlog migrado.
+Requisitos que decide/verifica el humano (no los cambia el migrator):
 - \`alfresco.reindex.continuous.maxGapAge=0\` MIENTRAS recorre el historico (con el defecto de 24 h, un cursor
   sembrado antes de esa edad se DESCARTA en silencio); al alcanzar el presente, volverlo a \`24h\` y
   \`continuous.maxWindow\` a \`30m\`.
@@ -280,6 +282,9 @@ el backlog migrado. Requisitos que decide/verifica el humano (no los cambia el m
   en el workspace, apunta \`MIGRATOR_REINDEX_PREFIXES_FILE\` para que el paso lo VALIDE (si faltan, BLOQUEA).
 - Indices: principal \`alfresco\`, estado \`alfresco-reindex-state\`, fallos \`alfresco-reindex-dead-letter\`.
   Comprueba el avance del cursor (\`lastSuccessfulToTimeEpochMs\`) y revisa el dead-letter (recuperacion manual).
+- \`target.stack.transform: true\` para indexar CONTENIDO (extraccion de texto via transform-core-aio); sin
+  transform el indexer solo cubre metadatos y path (\`CONTENTINDEXINGENABLED=false\`) y la busqueda de texto
+  quedaria incompleta. Decidelo en la planificacion (pregunta al humano).
 En EE la Reindexing app es one-shot; si no hay comando, define \`MIGRATOR_REINDEX_CMD\`.
 
 **No crees directorios ni ficheros de trabajo con \`bash\`** (el sandbox es read-only): el migrador crea su

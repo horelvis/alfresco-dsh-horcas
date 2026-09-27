@@ -166,6 +166,19 @@ etc. `xpath`, `index-sql` e `index-alfresco` no existen. Grep del log:
 
 ## 8. Como lo hace este migrator
 
+**El stack generado del hop FINAL (CE 26.2+, `elasticsearch`/`opensearch`) ya incluye lo necesario**:
+
+- Repositorio: en `alfresco-global.properties` se activa `index.subsystem.name=elasticsearch`,
+  `elasticsearch.host=search`/`port=9200`, `elasticsearch.createIndexIfNotExists=true`,
+  `solr.secureComms=secret` y `solr.sharedSecret=<SEARCH_SHARED_SECRET>` (secreto del stack, generado una vez).
+- Servicio **`batch-indexer`** (`alfresco-elasticsearch-batch-indexing:5.7.1`) con datasource, URI de
+  Elasticsearch, `ALFRESCO_ACS_URL`, el secreto compartido, **`maxGapAge=0`** y `maxWindow=7d` para la carga
+  inicial. Arranca en `schema-upgrade`, **despues** de que el repositorio responda (crea el indice y su
+  mapping). Con `target.stack.transform: true` indexa **contenido** (via transform-core-aio); sin transform,
+  se indexan solo metadatos y path (`ALFRESCO_REINDEX_CONTENTINDEXINGENABLED=false`).
+- Si se aporta `MIGRATOR_REINDEX_PREFIXES_FILE` (local), `provision-hop` lo copia al destino y lo monta en el
+  indexer (`/config/prefixes.json`).
+
 `src/domain/reindex.ts` resuelve la estrategia por motor/edicion/version:
 
 | Escenario | Estrategia | Accion del paso `reindex` |

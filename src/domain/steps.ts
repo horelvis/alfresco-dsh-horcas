@@ -18,6 +18,7 @@ import { discoverRest } from './assessment.js';
 import { sameMinor } from './hops.js';
 import { requireSupportedUpgradePath } from './upgrade-paths.js';
 import {
+  BATCH_INDEXER_SERVICE,
   composeEnvPrefix,
   composeImages,
   composeProjectName,
@@ -41,7 +42,7 @@ import {
 } from './provision.js';
 import { computeAlfrescoMemory } from './memory.js';
 import { modelsCoverage, NAMESPACES_IN_USE_SQL, validateModelsJar, type ContentModel, type ModelsCoverage } from './models.js';
-import { missingPrefixes, prefixesFromModels, resolveReindexStrategy, searchCommunityReindexScript } from './reindex.js';
+import { isSearchCommunity, missingPrefixes, prefixesFromModels, resolveReindexStrategy, searchCommunityReindexScript } from './reindex.js';
 import { connectSource, dbConfigFromYaml, queryRows } from '../infra/pg.js';
 import { recordEvidence } from './evidence.js';
 import { stackLateServices } from './final-stack.js';
@@ -402,14 +403,17 @@ const schemaUpgrade: StepDefinition = {
       const probe = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${process.env.MIGRATOR_DST_USER ?? 'admin'}:${process.env.MIGRATOR_DST_PASSWORD ?? 'admin'}" "${discovery}"`);
       if (probe.stdout.trim().startsWith('2')) {
         const detail = `alfresco ${compose.version} arrancado sobre la BD restaurada (discovery http=${probe.stdout.trim()})`;
-        // Stack final: Share arranca cuando el repositorio ya responde.
+        // Stack final: Share y el batch indexer arrancan cuando el repositorio ya responde (el indexer
+        // necesita el endpoint de extraccion de texto y el indice/mapping que crea el repositorio).
         const share = finalShareUrl(ctx, baseUrl, compose.version);
-        if (!share || compose.external) return ok('schema-upgrade', detail);
-        const late = await runShell(ctx.destination, `${compose.cmd} up -d ${stackLateServices(ctx.project.target.stack).join(' ')}`);
-        if (late.exitCode !== 0) return fail('schema-upgrade', `${detail}; Share no arranco: ${late.stderr.trim()}`);
+        const lateServices = lateStackServicesFor(ctx);
+        if (compose.external || lateServices.length === 0) return ok('schema-upgrade', detail);
+        const late = await runShell(ctx.destination, `${compose.cmd} up -d ${lateServices.join(' ')}`);
+        if (late.exitCode !== 0) return fail('schema-upgrade', `${detail}; no arrancaron ${lateServices.join(', ')}: ${late.stderr.trim()}`);
+        if (!share) return ok('schema-upgrade', `${detail} · ${lateServices.join(', ')} en marcha`);
         const code = await waitHttp(ctx.destination, share, Number(process.env.MIGRATOR_SHARE_TIMEOUT_S ?? 600));
         return code.startsWith('2') || code.startsWith('3')
-          ? ok('schema-upgrade', `${detail} · share http=${code}`)
+          ? ok('schema-upgrade', `${detail} · share http=${code} · ${lateServices.join(', ')} en marcha`)
           : fail('schema-upgrade', `${detail}; Share no responde en ${share} (http=${code || 'sin respuesta'})`);
       }
       // Cada minuto: fallo de esquema/arranque en el log o contenedor parado => no se espera al timeout.
@@ -451,6 +455,19 @@ export function finalShareUrl(ctx: StepContext, baseUrl: string, version: string
   const url = new URL(baseUrl);
   if (!stack.proxy) url.port = '8081';
   return `${url.origin}/share/page`;
+}
+
+/** `true` si el destino FINAL usa Search Community (el batch indexer solo va en el compose del hop final). */
+const projectSearchCommunity = (ctx: StepContext): boolean =>
+  isSearchCommunity(ctx.project.target.version, ctx.project.target.edition ?? 'CE', ctx.project.target.search?.engine ?? '');
+
+/** Servicios del stack final que arrancan DESPUES de que el repositorio responda: Share y batch indexer. */
+function lateStackServicesFor(ctx: StepContext): string[] {
+  const finalHop = !ctx.hop || sameMinor(ctx.hop, ctx.project.target.version);
+  return [
+    ...stackLateServices(ctx.project.target.stack),
+    ...(projectSearchCommunity(ctx) && finalHop ? [BATCH_INDEXER_SERVICE] : []),
+  ];
 }
 
 /** Espera a que una URL responda (codigo HTTP final) hasta `timeoutS`; devuelve el ultimo codigo. */
@@ -568,6 +585,13 @@ const provisionHop: StepDefinition = {
     try {
       const memTotal = await dockerMemTotal(host);
       const request = { ...plan, memory: memTotal ? computeAlfrescoMemory(memTotal) : undefined };
+      // Search Community (hop FINAL): si el humano aporta el mapa COMPLETO de namespaces, se monta en el
+      // batch indexer (sin el, un namespace propio ausente deja nodos SIN indexar en silencio).
+      const localPrefixes = process.env.MIGRATOR_REINDEX_PREFIXES_FILE;
+      const remotePrefixes = `${dstDir}/reindex/prefixes.json`;
+      if (projectSearchCommunity(ctx) && sameMinor(hop, ctx.project.target.version) && localPrefixes) {
+        request.reindexPrefixesFile = remotePrefixes;
+      }
       const registry = imageRegistry(repoImage);
       const user = process.env.MIGRATOR_REGISTRY_USER ?? process.env.MIGRATOR_EE_USER;
       const password = process.env.MIGRATOR_REGISTRY_PASSWORD ?? process.env.MIGRATOR_EE_PASSWORD;
@@ -584,6 +608,10 @@ const provisionHop: StepDefinition = {
       if (localJar) {
         const copied = await copyDumpToDestination(host, localJar, remoteJar);
         if (!copied.ok) return fail('provision-hop', `no se pudo copiar el JAR de modelos al DESTINO: ${copied.reason}`);
+      }
+      if (request.reindexPrefixesFile && localPrefixes) {
+        const copied = await copyDumpToDestination(host, localPrefixes, remotePrefixes);
+        if (!copied.ok) return fail('provision-hop', `no se pudo copiar el prefix-map al DESTINO: ${copied.reason}`);
       }
       await writeStackConfig(host, dstDir, globalProperties(request, secrets));
       const stopped = await stopRunningStacks(host, composeProjectName(ctx.project.project));
