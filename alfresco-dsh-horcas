@@ -174,10 +174,11 @@ CONFIGURACION (asi no hace falta pasar parametros en cada arranque)
     2) fichero de DEFAULTS GLOBALES: $ALFRESCO_DSH_HORCAS_ENV o ~/.config/alfresco-dsh-horcas/env,
     3) .env del WORKSPACE actual (el directorio desde el que invocas),
     4) variables exportadas en la linea de comandos (mandan siempre).
-  Ej.: pon en el .env del workspace MIGRATOR_MODE=write y DSH_BIN=... y
-  arranca solo con:  alfresco-dsh-horcas web
+  Ej.: pon en el .env del workspace MIGRATOR_MODE=write y arranca solo con:  alfresco-dsh-horcas web
   Lanzalo EN el directorio de trabajo (donde vive el YAML del proyecto). Si no hay .env, se crea
   automaticamente desde .env.example; si no hay YAML, el agente lo crea con migrator_wizard.
+  DSH_BIN (binario del arnes, p.ej. el fork) se EXPORTA al invocar o se pone en el fichero de defaults
+  globales; NUNCA en el .env del workspace (el arnes lo rechaza: lo reserva el entorno que lo lanza).
 
 MODO (seguridad determinista, no depende del prompt)
   Solo-lectura por defecto: las tools de ESCRITURA del migrador se DENIEGAN.
