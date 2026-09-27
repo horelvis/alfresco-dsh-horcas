@@ -29,6 +29,13 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
 #    exportada al invocar (p.ej. MIGRATOR_APPROVAL=allowlist) NO la pisan los ficheros (se restauran las
 #    exportadas previas tras cargarlos).
 GLOBAL_ENV="${ALFRESCO_DSH_HORCAS_ENV:-${XDG_CONFIG_HOME:-$HOME/.config}/alfresco-dsh-horcas/env}"
+# Si el workspace no tiene `.env`, se CREA desde `.env.example`: el workspace queda listo y solo hay que
+# rellenar credenciales/modelo. Si no hay YAML de proyecto, el AGENTE lo crea con `migrator_wizard`.
+if [ ! -f "$PWD/.env" ] && [ -f "$ROOT/.env.example" ]; then
+  if cp "$ROOT/.env.example" "$PWD/.env" 2>/dev/null; then
+    echo "[alfresco-dsh-horcas] creado $PWD/.env desde .env.example (rellena origen, destino y modelo)." >&2
+  fi
+fi
 if [ -f "$GLOBAL_ENV" ] || [ -f "$PWD/.env" ]; then
   _preset=$(export -p)
   set -a
@@ -169,6 +176,8 @@ CONFIGURACION (asi no hace falta pasar parametros en cada arranque)
     4) variables exportadas en la linea de comandos (mandan siempre).
   Ej.: pon en el .env del workspace MIGRATOR_MODE=write y DSH_BIN=... y
   arranca solo con:  alfresco-dsh-horcas web
+  Lanzalo EN el directorio de trabajo (donde vive el YAML del proyecto). Si no hay .env, se crea
+  automaticamente desde .env.example; si no hay YAML, el agente lo crea con migrator_wizard.
 
 MODO (seguridad determinista, no depende del prompt)
   Solo-lectura por defecto: las tools de ESCRITURA del migrador se DENIEGAN.
