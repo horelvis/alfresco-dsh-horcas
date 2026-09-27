@@ -22,20 +22,25 @@ while [ -h "$SELF" ]; do
 done
 ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd)
 
-# 1) Configuracion local del WORKSPACE actual (nunca la del repo del producto): `.env` en el
-#    directorio desde el que se invoca. Copia "$ROOT/.env.example" a "./.env" y rellena.
-#    Lo EXPLICITO manda: una variable ya exportada al invocar (p.ej. MIGRATOR_APPROVAL=allowlist) NO la
-#    pisa el `.env` (se restauran las exportadas previas tras cargarlo).
-if [ -f "$PWD/.env" ]; then
+# 1) Configuracion: DEFAULTS GLOBALES (opcional) + `.env` del WORKSPACE actual (nunca la del repo del
+#    producto). El global vive en $ALFRESCO_DSH_HORCAS_ENV o ~/.config/alfresco-dsh-horcas/env y sirve
+#    para valores comunes a todos los workspaces (p.ej. DSH_BIN, MIGRATOR_MODE, aprobacion, modelo).
+#    El `.env` del workspace manda sobre el global. Lo EXPLICITO manda sobre ambos: una variable ya
+#    exportada al invocar (p.ej. MIGRATOR_APPROVAL=allowlist) NO la pisan los ficheros (se restauran las
+#    exportadas previas tras cargarlos).
+GLOBAL_ENV="${ALFRESCO_DSH_HORCAS_ENV:-${XDG_CONFIG_HOME:-$HOME/.config}/alfresco-dsh-horcas/env}"
+if [ -f "$GLOBAL_ENV" ] || [ -f "$PWD/.env" ]; then
   _preset=$(export -p)
   set -a
   # shellcheck disable=SC1091
-  . "$PWD/.env"
+  if [ -f "$GLOBAL_ENV" ]; then . "$GLOBAL_ENV"; fi
+  # shellcheck disable=SC1091
+  if [ -f "$PWD/.env" ]; then . "$PWD/.env"; fi
   set +a
   eval "$_preset"
   unset _preset
 else
-  echo "[alfresco-dsh-horcas] AVISO: no hay .env en el workspace ($PWD)." >&2
+  echo "[alfresco-dsh-horcas] AVISO: no hay .env en el workspace ($PWD) ni defaults globales ($GLOBAL_ENV)." >&2
   echo "[alfresco-dsh-horcas] copia $ROOT/.env.example a $PWD/.env y rellena (origen, destino, modelo)." >&2
 fi
 
@@ -155,6 +160,15 @@ EJECUTAR
   alfresco-dsh-horcas web [--port 8080] [--no-open]
   alfresco-dsh-horcas headless "<tarea>"   # una tarea, no interactivo
   alfresco-dsh-horcas "analiza en solo lectura la migracion de data/projects/example.yaml"
+
+CONFIGURACION (asi no hace falta pasar parametros en cada arranque)
+  El lanzador carga, en este orden de menor a mayor prioridad:
+    1) defaults internos (guardrail, sandbox read-only, estado, rutas, modelo),
+    2) fichero de DEFAULTS GLOBALES: $ALFRESCO_DSH_HORCAS_ENV o ~/.config/alfresco-dsh-horcas/env,
+    3) .env del WORKSPACE actual (el directorio desde el que invocas),
+    4) variables exportadas en la linea de comandos (mandan siempre).
+  Ej.: pon en el .env del workspace MIGRATOR_MODE=write y DSH_BIN=... y
+  arranca solo con:  alfresco-dsh-horcas web
 
 MODO (seguridad determinista, no depende del prompt)
   Solo-lectura por defecto: las tools de ESCRITURA del migrador se DENIEGAN.

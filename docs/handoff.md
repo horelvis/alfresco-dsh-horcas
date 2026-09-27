@@ -36,11 +36,16 @@ agente del plugin sobre el arnés fork.
   `DEEPSEEK_DEFAULT_MODEL` solo alimentan la búsqueda web. Para modelo local: otro provider en `llm-pi-ai`.
 
 ## Cómo lanzar
+El lanzador carga, de menor a mayor prioridad: defaults internos → **defaults globales**
+(`$ALFRESCO_DSH_HORCAS_ENV` o `~/.config/alfresco-dsh-horcas/env`) → **`.env` del workspace** → variables
+exportadas al invocar (mandan siempre). Así, con `DSH_BIN`, `MIGRATOR_MODE`, `MIGRATOR_APPROVAL`, etc. en el
+`.env` del workspace, basta:
 ```
 cd <workspace-del-proyecto>
-DSH_BIN="node <ruta-local>/deepseek-harness/apps/cli/lib/bin.js" \
-MIGRATOR_MODE=write alfresco-dsh-horcas web --no-open --port 8087
+alfresco-dsh-horcas web --no-open --port 8087
 ```
+(o, sin instalar, `./alfresco-dsh-horcas web` desde el repo). El perfil `web` enlaza el plugin al repo con
+`patchReload: live`: cada arranque del arnés carga el `dist` recién compilado.
 - **Guardrail solo-migración** (`MIGRATOR_GUARDRAIL=true`): permite lectura/orquestación; deniega `bash`/
   escritura de ficheros/web. Con `MIGRATOR_MODE=write`: toda escritura del migrator pasa por aprobación.
 - **`/help`** (comando humano del arnés): muestra la ayuda de arranque del migrador sin depender del LLM.
