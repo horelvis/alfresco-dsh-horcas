@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 #
-# Instalador del agente de migracion de Alfresco (plugin dsh-alfresco-migrator).
+# Instalador del agente de migracion de Alfresco (plugin dsh-plugin-alfresco-migrator).
 #
 #   ./install.sh
 #

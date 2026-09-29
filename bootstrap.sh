@@ -5,17 +5,17 @@
 # El repo es PRIVADO, asi que necesitas autenticacion. Con `gh` autenticado:
 #
 #   curl -fsSL -H "Authorization: Bearer $(gh auth token)" \
-#     https://raw.githubusercontent.com/horelvis/dsh-alfresco-migrator/main/bootstrap.sh | sh
+#     https://raw.githubusercontent.com/horelvis/alfresco-dsh-horcas/main/bootstrap.sh | sh
 #
 # O clona primero y ejecuta install.sh:
 #
-#   gh repo clone horelvis/dsh-alfresco-migrator ~/.local/share/alfresco-dsh-horcas -- --depth 1
+#   gh repo clone horelvis/alfresco-dsh-horcas ~/.local/share/alfresco-dsh-horcas -- --depth 1
 #   ~/.local/share/alfresco-dsh-horcas/install.sh
 #
 # Clona (o actualiza) el repo en $MIGRATOR_HOME y ejecuta su install.sh.
 set -eu
 
-SLUG="${MIGRATOR_SLUG:-horelvis/dsh-alfresco-migrator}"
+SLUG="${MIGRATOR_SLUG:-horelvis/alfresco-dsh-horcas}"
 REPO="${MIGRATOR_REPO:-https://github.com/$SLUG.git}"
 DIR="${MIGRATOR_HOME:-$HOME/.local/share/alfresco-dsh-horcas}"
 
