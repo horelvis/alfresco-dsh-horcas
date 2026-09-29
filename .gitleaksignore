@@ -1,8 +1,8 @@
 # Falsos positivos de gitleaks (historial): contrasenas FICTICIAS que testean el enmascarador de
 # secretos (`redactText`) y el default antiguo `admin:admin` ya eliminado del codigo.
 # No anaden hallazgos nuevos: los escaneos de commits futuros quedan limpios.
-f8a2a296cd4b26ddfe0039ceb748891fa69fddae:test/redact.test.ts:generic-api-key:14
-f8a2a296cd4b26ddfe0039ceb748891fa69fddae:test/redact.test.ts:generic-api-key:22
-d5f79199dd280d8896804ef1503127a781d347b6:test/redact.test.ts:generic-api-key:14
-d5f79199dd280d8896804ef1503127a781d347b6:test/redact.test.ts:generic-api-key:22
-24f720450a7650558180a1aff03e2158374737d3:src/domain/steps.ts:curl-auth-user:287
+564d0e20cc4328ebe32e4e5af502b37ee80cb6c8:test/redact.test.ts:generic-api-key:14
+564d0e20cc4328ebe32e4e5af502b37ee80cb6c8:test/redact.test.ts:generic-api-key:22
+ebfa1f156d4a34d078bb348e62babda2a83b85fb:test/redact.test.ts:generic-api-key:14
+ebfa1f156d4a34d078bb348e62babda2a83b85fb:test/redact.test.ts:generic-api-key:22
+acec25fc84605d2a9409eff8fadb9edb9e44c825:src/domain/steps.ts:curl-auth-user:287
