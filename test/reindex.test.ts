@@ -137,3 +137,16 @@ describe('reindexing app', () => {
     expect(() => reindexingAppCommand(resolveReindexStrategy('SOLR', '6.6', '7.4'), params)).toThrow();
   });
 });
+
+describe('prefixes-file del indexador (formatos)', () => {
+  it('acepta el formato envuelto (prefixUriMap) y el plano; ignora claves no-URI', async () => {
+    const { prefixMapFromJson } = await import('../src/domain/reindex.js');
+    const wrapped = { prefixUriMap: { 'http://www.alfresco.org/model/content/1.0': 'cm', 'model.gadex': 'gadex', '': '' } };
+    expect(prefixMapFromJson(wrapped)).toEqual([
+      { uri: 'http://www.alfresco.org/model/content/1.0', prefix: 'cm' },
+      { uri: 'model.gadex', prefix: 'gadex' },
+    ]);
+    const flat = { 'model.ocr': 'ocr', 'http://x/y': 'y' };
+    expect(prefixMapFromJson(flat)).toEqual([{ uri: 'model.ocr', prefix: 'ocr' }, { uri: 'http://x/y', prefix: 'y' }]);
+  });
+});

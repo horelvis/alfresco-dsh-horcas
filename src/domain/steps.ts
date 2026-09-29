@@ -42,7 +42,7 @@ import {
 } from './provision.js';
 import { computeAlfrescoMemory } from './memory.js';
 import { modelsCoverage, NAMESPACES_IN_USE_SQL, validateModelsJar, type ContentModel, type ModelsCoverage } from './models.js';
-import { isSearchCommunity, missingPrefixes, prefixesFromModels, resolveReindexStrategy, searchCommunityReindexScript } from './reindex.js';
+import { isSearchCommunity, missingPrefixes, prefixMapFromJson, prefixesFromModels, resolveReindexStrategy, searchCommunityReindexScript } from './reindex.js';
 import { connectSource, dbConfigFromYaml, queryRows } from '../infra/pg.js';
 import { recordEvidence } from './evidence.js';
 import { stackForVersion, stackLateServices } from './final-stack.js';
@@ -686,8 +686,10 @@ async function prefixMapNote(ctx: StepContext): Promise<{ ok: boolean; detail: s
     };
   }
   try {
-    const provided = JSON.parse(await readFile(file, 'utf8')) as Record<string, string>;
-    const missing = missingPrefixes(required, Object.entries(provided).map(([uri, prefix]) => ({ uri, prefix: String(prefix) })));
+    // El indexador consume `{"prefixUriMap": {uri: prefix}}`; el addon y otros generadores pueden dar el mapa
+    // PLANO. Se aceptan ambas formas.
+    const provided = prefixMapFromJson(JSON.parse(await readFile(file, 'utf8')));
+    const missing = missingPrefixes(required, provided);
     if (missing.length) {
       return {
         ok: false,
