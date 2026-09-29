@@ -85,7 +85,17 @@ La experiencia se guarda en `.migrator/experience.jsonl` (una campaña por proye
 de intentos); complementa la memoria conversacional del arnés y permite reanudar sin repetir lo ya hecho.
 
 ## Guardrails de seguridad (todos)
-La seguridad **no depende del prompt**: está impuesta en código determinista. Resumen, por mecanismo:
+La seguridad **no depende del prompt**: está impuesta en código determinista.
+
+![Alfresco Horcas - DSH: guardrails y soporte del plugin](docs/harness-guardrails.png)
+
+Versión interactiva (zoom, búsqueda, trazado de relaciones): [`docs/harness-guardrails.html`](docs/harness-guardrails.html)
+(fuente: [`docs/harness-guardrails.architecture.json`](docs/harness-guardrails.architecture.json), generada con
+[archify](https://github.com/tt-a1i/archify)). El plugin se monta igual sobre **dsh limpio** (npm) o sobre el
+**fork**; el fork solo añade UX (español, aprobación en 2 pasos con motivo estructurado, decision-consultant
+Jev/Kev, título de producto) y no es requisito funcional.
+
+Resumen, por mecanismo:
 
 | # | Guardrail | Qué impone | Dónde | Config |
 |---|---|---|---|---|

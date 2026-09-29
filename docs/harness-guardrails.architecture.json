@@ -1,0 +1,317 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Alfresco Horcas - DSH: guardrails y soporte del plugin",
+    "output": "docs/harness-guardrails.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "agent",
+      "type": "external",
+      "label": "Agente LLM",
+      "sublabel": "deepseek-v4.1-flash",
+      "pos": [
+        10,
+        170
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "fork",
+      "type": "cloud",
+      "label": "Fork dsh (UX)",
+      "sublabel": "es · 2 pasos · Jev/Kev",
+      "pos": [
+        228,
+        50
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "dsh",
+      "type": "frontend",
+      "label": "dsh runtime",
+      "sublabel": "limpio (npm) o fork",
+      "pos": [
+        228,
+        170
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "sandbox",
+      "type": "security",
+      "label": "Sandbox ficheros",
+      "sublabel": "DSH_PERMISSION_MODE",
+      "pos": [
+        228,
+        290
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "readonly",
+      "type": "security",
+      "label": "Solo-lectura",
+      "sublabel": "autoprotección · auditor",
+      "pos": [
+        446,
+        50
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "policy",
+      "type": "security",
+      "label": "Predicado plugin",
+      "sublabel": "MIGRATOR_MODE · GUARDRAIL",
+      "pos": [
+        446,
+        170
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "approval",
+      "type": "security",
+      "label": "Aprobación",
+      "sublabel": "one-shot · MIGRATOR_APPROVAL",
+      "pos": [
+        664,
+        170
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "Gates de dominio",
+      "sublabel": "hops · coherencia · PROD",
+      "pos": [
+        446,
+        290
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Tools migrator_*",
+      "sublabel": "run_steps · backup · reindex",
+      "pos": [
+        664,
+        290
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "destination",
+      "type": "cloud",
+      "label": "DESTINO ACS 26.2",
+      "sublabel": "docker/SSH",
+      "pos": [
+        882,
+        290
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "source",
+      "type": "database",
+      "label": "ORIGEN 7.1.0",
+      "sublabel": "inmutable",
+      "pos": [
+        664,
+        410
+      ],
+      "size": [
+        140,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Host dsh (limpio o fork)",
+      "wraps": [
+        "fork",
+        "dsh",
+        "sandbox"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "security-group",
+      "label": "Plugin: predicado y guardas",
+      "wraps": [
+        "readonly",
+        "policy",
+        "approval"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "security-group",
+      "label": "Plugin: ejecución",
+      "wraps": [
+        "gates",
+        "tools"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "DESTINO (remoto)",
+      "wraps": [
+        "destination"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "ORIGEN (solo lectura)",
+      "wraps": [
+        "source"
+      ],
+      "pad": 12
+    }
+  ],
+  "connections": [
+    {
+      "from": "agent",
+      "to": "dsh",
+      "label": "tool calls",
+      "variant": "emphasis"
+    },
+    {
+      "from": "fork",
+      "to": "dsh",
+      "label": "overlay UX (opcional)",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    },
+    {
+      "from": "dsh",
+      "to": "sandbox",
+      "label": "bash · write/edit",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    },
+    {
+      "from": "dsh",
+      "to": "policy",
+      "label": "bundle",
+      "variant": "emphasis"
+    },
+    {
+      "from": "policy",
+      "to": "readonly",
+      "label": "solo-lectura",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "from": "policy",
+      "to": "approval",
+      "label": "si write",
+      "variant": "security"
+    },
+    {
+      "from": "approval",
+      "to": "tools",
+      "label": "allowed-once",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    },
+    {
+      "from": "gates",
+      "to": "tools",
+      "label": "fail-closed",
+      "variant": "security"
+    },
+    {
+      "from": "tools",
+      "to": "destination",
+      "label": "run_steps",
+      "variant": "emphasis"
+    },
+    {
+      "from": "tools",
+      "to": "source",
+      "label": "SELECT-only",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 30
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Host: fork o dsh limpio",
+      "items": [
+        "dsh limpio (npm): el plugin funciona igual",
+        "Fork = overlay UX opcional: es, aprobación en 2 pasos, Jev/Kev, DSH_CLIENT_TITLE",
+        "Se monta como bundle de perfil o --patch ./cordis.yml"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Guardas duras",
+      "items": [
+        "Origen inmutable: SELECT-only + requireDistinctTarget",
+        "Autoprotección: plugin/arnés no modificables; auditor solo-lectura",
+        "Redacción de secretos antes del LLM"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Config y gates",
+      "items": [
+        "MIGRATOR_MODE · MIGRATOR_APPROVAL · MIGRATOR_GUARDRAIL",
+        "Guarda de hops fail-closed · ensayo→PROD",
+        "Coherencia: migration.coherence.policy"
+      ]
+    }
+  ]
+}
