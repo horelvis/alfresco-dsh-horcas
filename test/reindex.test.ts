@@ -50,7 +50,7 @@ describe('watermark del batch indexer (Search Community)', () => {
   });
 
   it('el script pone el cursor en el indice de estado y lo lee de vuelta', () => {
-    const script = searchCommunityReindexScript({ project: 'gadex-710', dbUser: 'alfresco', dbName: 'alfresco' });
+    const script = searchCommunityReindexScript({ project: 'acme-710', dbUser: 'alfresco', dbName: 'alfresco' });
     expect(script).toContain(`_doc/${WATERMARK_DOC_ID}`);
     expect(script).toContain('alfresco-reindex-state');
     expect(script).toContain('min(commit_time_ms)');
@@ -58,7 +58,7 @@ describe('watermark del batch indexer (Search Community)', () => {
   });
 
   it('descubre el motor por servicio compose y NUNCA elige el batch indexer (su imagen contiene "elasticsearch")', () => {
-    const script = searchCommunityReindexScript({ project: 'gadex-710', dbUser: 'alfresco', dbName: 'alfresco' });
+    const script = searchCommunityReindexScript({ project: 'acme-710', dbUser: 'alfresco', dbName: 'alfresco' });
     expect(script).toContain("label=com.docker.compose.service=search");
     expect(script).toContain("label=com.docker.compose.service=postgres");
     expect(script).toContain("grep -Eiv 'batch-index'");
@@ -68,19 +68,19 @@ describe('watermark del batch indexer (Search Community)', () => {
     const host = searchCommunityReindexScript({ dbUser: 'alfresco', dbName: 'alfresco', searchUrl: 'http://es:9200/' });
     expect(host).toContain('CURL="curl -fsS"');
     expect(host).toContain('BASE=\'http://es:9200\'');
-    const container = searchCommunityReindexScript({ dbUser: 'alfresco', dbName: 'alfresco', searchContainer: 'gadex-search-1' });
+    const container = searchCommunityReindexScript({ dbUser: 'alfresco', dbName: 'alfresco', searchContainer: 'acme-search-1' });
     expect(container).toContain('CURL="docker exec $SEARCH curl -fsS"');
-    expect(container).toContain("SEARCH='gadex-search-1'");
+    expect(container).toContain("SEARCH='acme-search-1'");
   });
 });
 
 describe('prefix-map del indexador (namespaces propios)', () => {
   it('deriva uri->prefix de los modelos y detecta los que faltan o difieren', () => {
-    const models = [{ namespaces: [{ uri: 'http://acme/gadex', prefix: 'gadex' }, { uri: 'http://acme/ocr', prefix: 'ocr' }] }];
+    const models = [{ namespaces: [{ uri: 'http://acme/acme', prefix: 'acme' }, { uri: 'http://acme/ocr', prefix: 'ocr' }] }];
     const required = prefixesFromModels(models);
-    expect(required).toEqual([{ uri: 'http://acme/gadex', prefix: 'gadex' }, { uri: 'http://acme/ocr', prefix: 'ocr' }]);
-    expect(missingPrefixes(required, [{ uri: 'http://acme/gadex', prefix: 'gadex' }])).toEqual([{ uri: 'http://acme/ocr', prefix: 'ocr' }]);
-    expect(missingPrefixes(required, [{ uri: 'http://acme/gadex', prefix: 'GADEX' }])).toHaveLength(2);
+    expect(required).toEqual([{ uri: 'http://acme/acme', prefix: 'acme' }, { uri: 'http://acme/ocr', prefix: 'ocr' }]);
+    expect(missingPrefixes(required, [{ uri: 'http://acme/acme', prefix: 'acme' }])).toEqual([{ uri: 'http://acme/ocr', prefix: 'ocr' }]);
+    expect(missingPrefixes(required, [{ uri: 'http://acme/acme', prefix: 'GADEX' }])).toHaveLength(2);
     expect(missingPrefixes(required, required)).toEqual([]);
   });
 });
@@ -141,10 +141,10 @@ describe('reindexing app', () => {
 describe('prefixes-file del indexador (formatos)', () => {
   it('acepta el formato envuelto (prefixUriMap) y el plano; ignora claves no-URI', async () => {
     const { prefixMapFromJson } = await import('../src/domain/reindex.js');
-    const wrapped = { prefixUriMap: { 'http://www.alfresco.org/model/content/1.0': 'cm', 'model.gadex': 'gadex', '': '' } };
+    const wrapped = { prefixUriMap: { 'http://www.alfresco.org/model/content/1.0': 'cm', 'model.acme': 'acme', '': '' } };
     expect(prefixMapFromJson(wrapped)).toEqual([
       { uri: 'http://www.alfresco.org/model/content/1.0', prefix: 'cm' },
-      { uri: 'model.gadex', prefix: 'gadex' },
+      { uri: 'model.acme', prefix: 'acme' },
     ]);
     const flat = { 'model.ocr': 'ocr', 'http://x/y': 'y' };
     expect(prefixMapFromJson(flat)).toEqual([{ uri: 'model.ocr', prefix: 'ocr' }, { uri: 'http://x/y', prefix: 'y' }]);

@@ -155,7 +155,7 @@ export function prefixMapFromJson(raw: unknown): ModelNamespace[] {
   if (!raw || typeof raw !== 'object') return [];
   const obj = raw as Record<string, unknown>;
   const map = (obj.prefixUriMap && typeof obj.prefixUriMap === 'object' ? obj.prefixUriMap : obj) as Record<string, unknown>;
-  // Los namespaces propios pueden ser URIs cortas (`model.gadex`), no solo http(s): no se filtra por esquema.
+  // Los namespaces propios pueden ser URIs cortas (`model.acme`), no solo http(s): no se filtra por esquema.
   return Object.entries(map)
     .filter(([uri]) => uri.length > 0)
     .map(([uri, prefix]) => ({ uri, prefix: String(prefix ?? '') }));

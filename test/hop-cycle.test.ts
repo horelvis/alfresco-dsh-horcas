@@ -91,10 +91,10 @@ describe('writeComposeRemote (nunca pisa el compose del operador)', () => {
 
 describe('keystore de metadatos por defecto', () => {
   it('va en alfresco-global.properties y como JAVA_TOOL_OPTIONS en el compose generado', async () => {
-    const { DEFAULT_KEYSTORE, globalProperties, renderCompose } = await import('../src/domain/provision.js');
+    const { defaultKeystore, globalProperties, renderCompose } = await import('../src/domain/provision.js');
     const request = { projectName: 'p', acsVersion: '7.4', edition: 'CE', deployment: 'compose', database: { engine: 'postgresql' }, dataDir: '/d' };
     const props = globalProperties(request, { POSTGRES_PASSWORD: 'x' });
-    for (const [key, value] of Object.entries(DEFAULT_KEYSTORE)) expect(props).toContain(`${key}=${value}`);
+    for (const [key, value] of Object.entries(defaultKeystore())) expect(props).toContain(`${key}=${value}`);
     expect(props).toContain('encryption.keystore.type=JCEKS');
     const yaml = renderCompose(request);
     expect(yaml).toContain('JAVA_TOOL_OPTIONS: "-Dencryption.keystore.type=JCEKS');

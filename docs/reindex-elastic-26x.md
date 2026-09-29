@@ -6,7 +6,7 @@ En 26.2 Community el motor deja de ser Solr y pasa a un OpenSearch/Elasticsearch
 
 Fuente principal: *The Definitive Guide to Alfresco Search Community* (Hyland Connect, 19-ago-2026,
 actualizada a 26.2 GA) y las notas de la release 26.2. Lo puesto aqui esta contrastado con la practica del
-ensayo de este proyecto (`gadex 7.1.0 -> 7.4 -> 25.3 -> 26.2`).
+ensayo de este proyecto (`acme 7.1.0 -> 7.4 -> 25.3 -> 26.2`).
 
 ## 1. Arquitectura
 
@@ -210,5 +210,5 @@ Variables de entorno (todas opcionales):
 
 > **No hay atajo.** Con `target.composeFile` (compose del operador) el `maxGapAge`/`prefixes-file` los fija el
 > operador en su stack; el migrator siembra el cursor y valida el mapa, pero no reescribe su despliegue.
-> El ensayo `gadex` demostro el caso peligroso: sin sembrar el cursor, el backlog migrado (dump) **nunca** entra
+> El ensayo `acme` demostro el caso peligroso: sin sembrar el cursor, el backlog migrado (dump) **nunca** entra
 > en el indice aunque el repositorio arranque sano y la paridad de datos sea PASS.

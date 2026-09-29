@@ -100,7 +100,7 @@ describe('stack por version (target.stackByVersion)', () => {
   it('el schema acepta stackByVersion y rechaza claves que no son version', async () => {
     const { validateProject } = await import('../src/domain/wizard.js');
     const base = {
-      project: 'gadex-test', access: { mode: 'local' },
+      project: 'acme-test', access: { mode: 'local' },
       source: { baseUrl: 'http://s/alfresco', version: '7.1.0', database: { engine: 'postgresql' }, contentStore: { type: 'FS', path: '/x' } },
       target: { version: '26.2', database: { engine: 'postgresql' }, contentStore: { type: 'FS', path: '/y' }, search: { engine: 'elasticsearch' } },
     };

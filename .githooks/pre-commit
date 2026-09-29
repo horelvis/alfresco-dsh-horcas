@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-commit: bloquea la commit de secretos (gitleaks, ficheros STAGEADOS).
+# Si gitleaks no esta instalado (brew install gitleaks), avisa y continua.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "[pre-commit] gitleaks no instalado (brew install gitleaks): se omite el escaneo" >&2
+  exit 0
+fi
+gitleaks git --staged --redact || {
+  echo "[pre-commit] gitleaks detecto posibles secretos en ficheros stageados: revisa o usa .gitleaksignore" >&2
+  exit 1
+}

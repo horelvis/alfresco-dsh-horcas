@@ -87,6 +87,21 @@ export interface StepDefinition {
 }
 
 const ok = (step: string, detail: string, command?: string): StepOutcome => ({ step, ok: true, detail, command });
+
+/**
+ * Credenciales REST del DESTINO para probes curl (`-u "user:pass"`). El usuario puede heredar del
+ * origen, pero la CONTRASEÑA es obligatoria: si falta, el paso FALLA sin intentar `admin`
+ * (un default silencioso podria "verificar" contra un destino con contrasena por defecto).
+ */
+export function dstCreds(): string {
+  const user = process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER;
+  const password = process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD;
+  if (!user || !password) {
+    throw new Error('faltan MIGRATOR_DST_USER/MIGRATOR_DST_PASSWORD (o SRC_*) para verificar el destino: define credenciales en el .env');
+  }
+  return `${user}:${password}`;
+}
+
 const skipped = (step: string, detail: string): StepOutcome => ({ step, ok: true, detail, skipped: true });
 const fail = (step: string, detail: string, command?: string): StepOutcome => ({ step, ok: false, detail, command });
 
@@ -395,12 +410,18 @@ const schemaUpgrade: StepDefinition = {
     if (!baseUrl) {
       return ok('schema-upgrade', 'alfresco arrancado (sin URL para esperar readiness)');
     }
+    // Sin credenciales del destino no hay probe de readiness: fallo explicito (sin default `admin`).
+    try {
+      dstCreds();
+    } catch (error) {
+      return fail('schema-upgrade', describeError(error));
+    }
     // El auto-update de esquema de un hop grande tarda: espera configurable (defecto 30 min).
     const discovery = `${baseUrl.replace(/\/$/, '')}/api/discovery`;
     const timeoutS = Number(process.env.MIGRATOR_SCHEMA_UPGRADE_TIMEOUT_S ?? 1800);
     const attempts = Math.max(1, Math.ceil(timeoutS / 10));
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      const probe = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${process.env.MIGRATOR_DST_USER ?? 'admin'}:${process.env.MIGRATOR_DST_PASSWORD ?? 'admin'}" "${discovery}"`);
+      const probe = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${dstCreds()}" "${discovery}"`);
       if (probe.stdout.trim().startsWith('2')) {
         const detail = `alfresco ${compose.version} arrancado sobre la BD restaurada (discovery http=${probe.stdout.trim()})`;
         // Stack final: Share y el batch indexer arrancan cuando el repositorio ya responde (el indexer
@@ -643,10 +664,14 @@ const smokeBoot: StepDefinition = {
     if (ctx.dryRun) return skipped('smoke-boot', `dry-run: smoke del hop ${hop}`);
     const baseUrl = process.env.MIGRATOR_DST_BASE_URL ?? ctx.project.target.baseUrl;
     if (!baseUrl) return fail('smoke-boot', 'sin MIGRATOR_DST_BASE_URL / target.baseUrl: no se puede verificar el hop');
-    const user = process.env.MIGRATOR_DST_USER ?? process.env.MIGRATOR_SRC_USER;
-    const password = process.env.MIGRATOR_DST_PASSWORD ?? process.env.MIGRATOR_SRC_PASSWORD;
+    let creds: string;
+    try {
+      creds = dstCreds();
+    } catch (error) {
+      return fail('smoke-boot', describeError(error));
+    }
+    const [user, password] = creds.split(':');
     const detected = await discoverRest(baseUrl, user, password);
-    const creds = `${user ?? 'admin'}:${password ?? 'admin'}`;
     const root = await runShell(
       ctx.destination,
       `curl -s -o /dev/null -w "%{http_code}" -u "${creds}" "${baseUrl.replace(/\/$/, '')}/api/-default-/public/alfresco/versions/1/nodes/-root-"`,
@@ -784,7 +809,12 @@ const verifyTarget: StepDefinition = {
       return skipped('verify-target', 'sin MIGRATOR_DST_BASE_URL');
     }
     const base = baseUrl.replace(/\/$/, '');
-    const creds = `${process.env.MIGRATOR_DST_USER ?? 'admin'}:${process.env.MIGRATOR_DST_PASSWORD ?? 'admin'}`;
+    let creds: string;
+    try {
+      creds = dstCreds();
+    } catch (error) {
+      return fail('verify-target', describeError(error));
+    }
     // Readiness: el repositorio responde (discovery).
     const ready = await runShell(ctx.destination, `curl -fsS -o /dev/null -w "%{http_code}" -u "${creds}" "${base}/api/discovery"`);
     const readyCode = ready.stdout.trim();

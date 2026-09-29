@@ -431,25 +431,27 @@ export async function writeStackEnv(host: HostRef, dir: string, secrets: Record<
 }
 
 /**
- * Keystore de METADATOS por defecto de las imagenes Docker de ACS (los valores publicos del compose
- * oficial y del ORIGEN (7.1)). Deben ser LOS MISMOS que en el origen: las propiedades cifradas de la
- * BD restaurada se descifran con este keystore. Sin ellos la imagen abre su keystore JCEKS como PKCS12 y
- * Alfresco no arranca. Se ponen en `alfresco-global.properties` y, en los compose generados, tambien como
- * propiedades JVM (`JAVA_TOOL_OPTIONS`), que es la via que documenta Alfresco.
+ * Keystore de METADATOS por defecto de las imagenes Docker de ACS: valores en `data/keystore.yaml`
+ * (DATOS, no codigo). Deben ser LOS MISMOS que en el origen: las propiedades cifradas de la BD
+ * restaurada se descifran con este keystore; sin ellos la imagen abre su keystore JCEKS como PKCS12
+ * y Alfresco no arranca. Overrides por entorno: `MIGRATOR_KEYSTORE_PASSWORD` y
+ * `MIGRATOR_KEYSTORE_METADATA_PASSWORD`. Se ponen en `alfresco-global.properties` y, en los compose
+ * generados, tambien como propiedades JVM (`JAVA_TOOL_OPTIONS`), la via que documenta Alfresco.
  */
-export const DEFAULT_KEYSTORE: Record<string, string> = {
-  'encryption.keystore.type': 'JCEKS',
-  'encryption.cipherAlgorithm': 'DESede/CBC/PKCS5Padding',
-  'encryption.keyAlgorithm': 'DESede',
-  'encryption.keystore.location': '/usr/local/tomcat/shared/classes/alfresco/extension/keystore/keystore',
-  'metadata-keystore.password': 'mp6yc0UD9e',
-  'metadata-keystore.aliases': 'metadata',
-  'metadata-keystore.metadata.password': 'oKIWzVdEdA',
-  'metadata-keystore.metadata.algorithm': 'DESede',
-};
+export function defaultKeystore(): Record<string, string> {
+  try {
+    const doc = yaml.load(readFileSync(path.join(dataDir(), 'keystore.yaml'), 'utf8')) as Record<string, string>;
+    delete doc.schemaVersion;
+    if (process.env.MIGRATOR_KEYSTORE_PASSWORD) doc['metadata-keystore.password'] = process.env.MIGRATOR_KEYSTORE_PASSWORD;
+    if (process.env.MIGRATOR_KEYSTORE_METADATA_PASSWORD) doc['metadata-keystore.metadata.password'] = process.env.MIGRATOR_KEYSTORE_METADATA_PASSWORD;
+    return doc;
+  } catch {
+    throw new Error('no se pudo leer data/keystore.yaml (keystore de metadatos): reinstala el plugin o define MIGRATOR_KEYSTORE_PASSWORD');
+  }
+}
 
 const keystoreJavaOpts = (): string =>
-  Object.entries(DEFAULT_KEYSTORE).map(([key, value]) => `-D${key}=${value}`).join(' ');
+  Object.entries(defaultKeystore()).map(([key, value]) => `-D${key}=${value}`).join(' ');
 
 /**
  * Contenido de `alfresco-global.properties` para el hop. La imagen 7.4 arranca con el fichero VACIO y los
@@ -479,7 +481,7 @@ export function globalProperties(request: ComposeRequest, secrets: Record<string
     `db.username=${user}`,
     `db.password=${secrets.POSTGRES_PASSWORD ?? ''}`,
     'dir.root=/usr/local/tomcat/alf_data',
-    ...Object.entries(DEFAULT_KEYSTORE).map(([key, value]) => `${key}=${value}`),
+    ...Object.entries(defaultKeystore()).map(([key, value]) => `${key}=${value}`),
     ...searchProps,
     '',
   ].join('\n');
