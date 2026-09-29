@@ -27,6 +27,23 @@ const OFFICIAL: Record<string, { share: string; transform: string }> = {
 };
 
 const minor = (version: string): string => parseVersion(version).slice(0, 2).join('.');
+
+/**
+ * Stack que aplica a la VERSION de un hop (fuente unica para compose, arranque tardio y URL de Share):
+ * 1. `target.stackByVersion["<mayor.menor>"]` si existe: config POR VERSION (manda; p.ej. Share solo en 26.2,
+ *    o `{}` para forzar solo repositorio + infra en ese hop);
+ * 2. si no, `target.stack` SOLO en la version FINAL (comportamiento general);
+ * 3. si no, ninguno: los hops intermedios son repositorio + infra.
+ * Las claves admiten `7.4` o `7.4.2` (se compara mayor.menor).
+ */
+export function stackForVersion(
+  target: { version: string; stack?: FinalStack; stackByVersion?: Record<string, FinalStack> },
+  version: string,
+): FinalStack | undefined {
+  const key = Object.keys(target.stackByVersion ?? {}).find((k) => minor(k) === minor(version));
+  if (key !== undefined) return target.stackByVersion![key];
+  return minor(version) === minor(target.version) ? target.stack : undefined;
+}
 const exact = (version: string): string => (version.split('.').length >= 3 ? version : `${version}.0`);
 
 export function shareImage(stack: FinalStack, version: string, edition: string): string {

@@ -102,6 +102,19 @@ describe('keystore de metadatos por defecto', () => {
   });
 });
 
+describe('servicios tardios del stack final (schema-upgrade)', () => {
+  it('en hops intermedios NO se arranca Share ni el indexer (el compose no los trae); en el final si', async () => {
+    const { lateStackServicesFor } = await import('../src/domain/steps.js');
+    const project = {
+      project: 'g',
+      target: { version: '26.2', edition: 'CE', search: { engine: 'elasticsearch' }, stack: { share: true } },
+    } as unknown as ProjectConfig;
+    expect(lateStackServicesFor({ project }, '7.4')).toEqual([]);
+    expect(lateStackServicesFor({ project }, '25.3')).toEqual([]);
+    expect(lateStackServicesFor({ project }, '26.2')).toEqual(['share', 'batch-indexer']);
+  });
+});
+
 describe('permisos del content store', () => {
   it('asigna alf-data al uid de Alfresco con un contenedor efimero (sin sudo)', async () => {
     const { alfDataOwnershipCommand } = await import('../src/domain/steps.js');

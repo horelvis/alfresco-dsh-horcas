@@ -70,3 +70,41 @@ describe('validacion con docker (si esta disponible)', () => {
     expect(result.exitCode).toBe(0);
   });
 });
+
+describe('stack por version (target.stackByVersion)', () => {
+  it('stackForVersion: por version manda; si no, stack general solo en la final; si no, nada', async () => {
+    const { stackForVersion } = await import('../src/domain/final-stack.js');
+    const general = { share: true, transform: true };
+    const target = { version: '26.2', stack: general, stackByVersion: { '25.3': { share: true }, '7.4.2': {} } };
+    expect(stackForVersion(target, '25.3')).toEqual({ share: true });
+    expect(stackForVersion(target, '7.4')).toEqual({}); // clave con parche: se compara mayor.menor
+    expect(stackForVersion(target, '26.2')).toEqual(general);
+    expect(stackForVersion({ version: '26.2', stack: general }, '25.3')).toBeUndefined();
+    // Por version tambien puede anular el general en la final.
+    expect(stackForVersion({ version: '26.2', stack: general, stackByVersion: { '26.2': { share: false } } }, '26.2')).toEqual({ share: false });
+  });
+
+  it('el compose del hop y los servicios tardios usan el stack de SU version', async () => {
+    const { lateStackServicesFor } = await import('../src/domain/steps.js');
+    const project = {
+      project: 'g',
+      target: { version: '26.2', edition: 'CE', search: { engine: 'elasticsearch' }, stack: { share: true }, stackByVersion: { '25.3': { share: true } } },
+    } as unknown as ProjectConfig;
+    expect(projectToComposeRequest(project, '25.3', false).stack).toEqual({ share: true });
+    expect(projectToComposeRequest(project, '7.4', false).stack).toBeUndefined();
+    expect(lateStackServicesFor({ project }, '25.3')).toEqual(['share']); // sin indexer: 25.3 no es Search Community
+    expect(lateStackServicesFor({ project }, '7.4')).toEqual([]);
+    expect(lateStackServicesFor({ project }, '26.2')).toEqual(['share', 'batch-indexer']);
+  });
+
+  it('el schema acepta stackByVersion y rechaza claves que no son version', async () => {
+    const { validateProject } = await import('../src/domain/wizard.js');
+    const base = {
+      project: 'gadex-test', access: { mode: 'local' },
+      source: { baseUrl: 'http://s/alfresco', version: '7.1.0', database: { engine: 'postgresql' }, contentStore: { type: 'FS', path: '/x' } },
+      target: { version: '26.2', database: { engine: 'postgresql' }, contentStore: { type: 'FS', path: '/y' }, search: { engine: 'elasticsearch' } },
+    };
+    expect(await validateProject({ ...base, target: { ...base.target, stackByVersion: { '25.3': { share: false }, '26.2': { share: true } } } })).toEqual([]);
+    expect((await validateProject({ ...base, target: { ...base.target, stackByVersion: { final: { share: true } } } })).length).toBeGreaterThan(0);
+  });
+});

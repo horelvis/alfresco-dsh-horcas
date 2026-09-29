@@ -57,6 +57,13 @@ describe('watermark del batch indexer (Search Community)', () => {
     expect(script).toContain("grep -Ei 'opensearch|elasticsearch'");
   });
 
+  it('descubre el motor por servicio compose y NUNCA elige el batch indexer (su imagen contiene "elasticsearch")', () => {
+    const script = searchCommunityReindexScript({ project: 'gadex-710', dbUser: 'alfresco', dbName: 'alfresco' });
+    expect(script).toContain("label=com.docker.compose.service=search");
+    expect(script).toContain("label=com.docker.compose.service=postgres");
+    expect(script).toContain("grep -Eiv 'batch-index'");
+  });
+
   it('con URL del motor usa curl desde el host; con contenedor, dentro del contenedor', () => {
     const host = searchCommunityReindexScript({ dbUser: 'alfresco', dbName: 'alfresco', searchUrl: 'http://es:9200/' });
     expect(host).toContain('CURL="curl -fsS"');

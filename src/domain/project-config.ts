@@ -63,6 +63,11 @@ export interface ProjectConfig {
      */
     stack?: import('./final-stack.js').FinalStack;
     /**
+     * Stack POR VERSION de hop (`"26.2": { share: true }`, `"25.3": {}`): manda sobre `stack` para esa
+     * version. Resolucion unica en `stackForVersion` (final-stack.ts).
+     */
+    stackByVersion?: Record<string, import('./final-stack.js').FinalStack>;
+    /**
      * JAR de MODELOS DE CONTENIDO (ruta LOCAL) aportado por el INSTALADOR: se valida y se monta en TODOS
      * los hops. El migrador no fabrica modelos.
      */
@@ -124,6 +129,7 @@ export function parseProjectYaml(text: string): ProjectConfig {
       acsImage: target.acsImage ? String(target.acsImage) : undefined,
       composeFile: target.composeFile ? String(target.composeFile) : undefined,
       stack: target.stack as ProjectConfig['target']['stack'],
+      stackByVersion: target.stackByVersion as ProjectConfig['target']['stackByVersion'],
       modelsJar: target.modelsJar ? String(target.modelsJar).replace(/^~/, process.env.HOME ?? '~') : undefined,
       modelsNotRequired: Array.isArray(target.modelsNotRequired) ? (target.modelsNotRequired as unknown[]).map(String) : undefined,
       database: target.database as ProjectDatabase | undefined,

@@ -229,6 +229,9 @@ AMPs/JARs/config). Si el YAML no define \`target.stack\`, PREGUNTA con \`ask_use
 version final (Share, transform, proxy, publicHost) y si hay una carpeta EN EL DESTINO con los modulos YA
 migrados (\`target.stack.extensions.repo|share\`, subcarpetas amps/ jars/ config/); pide al humano que lo fije en
 el YAML. Sin respuesta (headless): solo repositorio y avisalo. Los hops intermedios NO llevan stack ni modulos.
+Si hace falta distinto por version, usa \`target.stackByVersion\` (clave mayor.menor, p.ej. \`"26.2": { share: true }\`):
+manda sobre \`target.stack\` en ese hop; \`{}\` fuerza solo repositorio + infra. NO pongas \`share: false\` en el
+\`stack\` general para recorrer hops intermedios: ya no lleva stack por defecto.
 Las customizaciones del origen se DETECTAN y AVISAN (item de modulos en WARN): el migrador no las porta.
 Para aplicar el stack a un destino que ya esta en la version final: \`provision-hop\` → \`schema-upgrade\` →
 \`smoke-boot\` → \`verify-target\` (el hop pendiente es la version final).

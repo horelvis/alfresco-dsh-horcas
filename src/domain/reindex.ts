@@ -189,16 +189,21 @@ export function searchCommunityReindexScript(o: SearchCommunityOptions): string 
   const dbName = shellQuote(o.dbName);
   const pgEnv = o.dbPassword ? `-e PGPASSWORD=${shellQuote(o.dbPassword)} ` : '';
   const projectFilter = o.project ? `--filter ${shellQuote(`label=com.docker.compose.project=${o.project}`)} ` : '';
-  const findContainer = (pattern: string): string =>
-    `"$(docker ps ${projectFilter}--format '{{.Names}}|{{.Image}}' | grep -Ei ${shellQuote(pattern)} | head -n1 | cut -d'|' -f1)"`;
+  // Descubrimiento: 1) por SERVICIO compose (`search` / `postgres`, fiable); 2) por imagen, EXCLUYENDO el
+  // batch indexer (su imagen `alfresco-elasticsearch-batch-indexing` casa con "elasticsearch" y no escucha en 9200).
+  const byService = (service: string): string =>
+    `$(docker ps ${projectFilter}--filter ${shellQuote(`label=com.docker.compose.service=${service}`)} --format '{{.Names}}' | head -n1)`;
+  const byImage = (pattern: string): string =>
+    `$(docker ps ${projectFilter}--format '{{.Names}}|{{.Image}}' | grep -Ei ${shellQuote(pattern)} | grep -Eiv 'batch-index' | head -n1 | cut -d'|' -f1)`;
+  const findContainer = (service: string, pattern: string): string => `"${byService(service)}"; [ -n "$_C" ] || _C="${byImage(pattern)}"`;
   const search = o.searchContainer ? shellQuote(o.searchContainer) : `\${MIGRATOR_DST_SEARCH_CONTAINER:-}`;
   const db = o.dbContainer ? shellQuote(o.dbContainer) : `\${MIGRATOR_DST_PG_CONTAINER:-}`;
   const lines = [
     'set -e',
     `SEARCH=${search}`,
     `DB=${db}`,
-    `[ -n "$SEARCH" ] || SEARCH=${findContainer('opensearch|elasticsearch')}`,
-    `[ -n "$DB" ] || DB=${findContainer('postgres')}`,
+    `if [ -z "$SEARCH" ]; then _C=${findContainer('search', 'opensearch|elasticsearch')}; SEARCH="$_C"; fi`,
+    `if [ -z "$DB" ]; then _C=${findContainer('postgres', 'postgres')}; DB="$_C"; fi`,
     `[ -n "$SEARCH" ] || { echo "sin contenedor de busqueda (opensearch/elasticsearch) en el DESTINO"; exit 2; }`,
     `[ -n "$DB" ] || { echo "sin contenedor de PostgreSQL en el DESTINO (usa MIGRATOR_REINDEX_CMD para otra BD)"; exit 3; }`,
     `MIN="$(docker exec ${pgEnv}"$DB" psql -U ${dbUser} -d ${dbName} -tAc ${shellQuote(minCommitTimeSql())} | tr -d '[:space:]')"`,

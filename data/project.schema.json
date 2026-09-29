@@ -185,6 +185,12 @@
             }
           }
         },
+        "stackByVersion": {
+          "type": "object",
+          "description": "Stack POR VERSION de hop (clave mayor.menor, p.ej. \"26.2\"): manda sobre `stack` en esa version. `{}` fuerza solo repositorio + infra. Sin entrada, `stack` aplica solo en la version final.",
+          "propertyNames": { "pattern": "^(7|2[3-9])\\.[0-9]+(\\.[0-9]+)?$" },
+          "additionalProperties": { "$ref": "#/$defs/target/properties/stack" }
+        },
         "composeFile": { "type": "string", "description": "Ruta EN EL HOST DESTINO (otra maquina) de un compose YA VALIDADO. Si se define, el migrator lo usa tal cual (docker compose -f) y NO genera ni escribe el suyo." },
         "database": { "$ref": "#/$defs/database" },
         "contentStore": { "$ref": "#/$defs/contentStore" },

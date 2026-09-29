@@ -18,6 +18,7 @@ import { loadJournal } from './journal.js';
 import { checklistFacts, latestEvidence } from './evidence.js';
 import { applyEvidence, buildChecklist } from './checklist.js';
 import { executedRuns, shareAccessUrl } from './report.js';
+import { stackForVersion } from './final-stack.js';
 
 export type AuditSeverity = 'FAIL' | 'WARN' | 'INFO';
 
@@ -171,7 +172,7 @@ export async function runAudit(project: ProjectConfig, state: string, at = new D
 
   // A8 · URL real de Share (informativo pero util para el cutover): sin proxy, puerto propio.
   const share = shareAccessUrl(project);
-  if (share) info(findings, 'SHARE_URL', `Share accesible en ${share}${project.target.stack?.proxy ? '' : ' (sin proxy)'}`);
+  if (share) info(findings, 'SHARE_URL', `Share accesible en ${share}${stackForVersion(project.target, project.target.version)?.proxy ? '' : ' (sin proxy)'}`);
 
   const fails = findings.filter((f) => f.severity === 'FAIL').length;
   const warns = findings.filter((f) => f.severity === 'WARN').length;

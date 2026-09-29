@@ -45,7 +45,7 @@ import { modelsCoverage, NAMESPACES_IN_USE_SQL, validateModelsJar, type ContentM
 import { isSearchCommunity, missingPrefixes, prefixesFromModels, resolveReindexStrategy, searchCommunityReindexScript } from './reindex.js';
 import { connectSource, dbConfigFromYaml, queryRows } from '../infra/pg.js';
 import { recordEvidence } from './evidence.js';
-import { stackLateServices } from './final-stack.js';
+import { stackForVersion, stackLateServices } from './final-stack.js';
 import { errorExcerpt, evaluateSmoke, evaluateUpgradeLog } from './schema-upgrade.js';
 
 /** Ultimas lineas no vacias del log (acotadas) para el detalle de un fallo sin marcador conocido. */
@@ -406,7 +406,7 @@ const schemaUpgrade: StepDefinition = {
         // Stack final: Share y el batch indexer arrancan cuando el repositorio ya responde (el indexer
         // necesita el endpoint de extraccion de texto y el indice/mapping que crea el repositorio).
         const share = finalShareUrl(ctx, baseUrl, compose.version);
-        const lateServices = lateStackServicesFor(ctx);
+        const lateServices = lateStackServicesFor(ctx, compose.version);
         if (compose.external || lateServices.length === 0) return ok('schema-upgrade', detail);
         const late = await runShell(ctx.destination, `${compose.cmd} up -d ${lateServices.join(' ')}`);
         if (late.exitCode !== 0) return fail('schema-upgrade', `${detail}; no arrancaron ${lateServices.join(', ')}: ${late.stderr.trim()}`);
@@ -446,28 +446,30 @@ const schemaUpgrade: StepDefinition = {
  *   los secretos del stack (sin ellos compose recrea servicios con variables vacias).
  */
 /**
- * URL de Share del stack FINAL (`undefined` si no aplica): con proxy en el mismo origen que el
- * repositorio (/share/); sin proxy, en el 8081.
+ * URL de Share del stack del HOP (`undefined` si ese hop no lleva Share): con proxy en el mismo origen que
+ * el repositorio (/share/); sin proxy, en el 8081. El stack del hop lo resuelve `stackForVersion`.
  */
-export function finalShareUrl(ctx: StepContext, baseUrl: string, version: string): string | undefined {
-  const stack = ctx.project.target.stack;
-  if (!stack?.share || !sameMinor(version, ctx.project.target.version)) return undefined;
+export function finalShareUrl(ctx: Pick<StepContext, 'project'>, baseUrl: string, version: string): string | undefined {
+  const stack = stackForVersion(ctx.project.target, version);
+  if (!stack?.share) return undefined;
   const url = new URL(baseUrl);
   if (!stack.proxy) url.port = '8081';
   return `${url.origin}/share/page`;
 }
 
-/** `true` si el destino FINAL usa Search Community (el batch indexer solo va en el compose del hop final). */
-const projectSearchCommunity = (ctx: StepContext): boolean =>
-  isSearchCommunity(ctx.project.target.version, ctx.project.target.edition ?? 'CE', ctx.project.target.search?.engine ?? '');
+/** `true` si el hop `version` usa Search Community (batch indexer): CE 26.2+ con ES/OpenSearch. */
+const hopSearchCommunity = (ctx: Pick<StepContext, 'project'>, version: string): boolean =>
+  isSearchCommunity(version, ctx.project.target.edition ?? 'CE', ctx.project.target.search?.engine ?? '');
 
-/** Servicios del stack final que arrancan DESPUES de que el repositorio responda: Share y batch indexer. */
-function lateStackServicesFor(ctx: StepContext): string[] {
-  const finalHop = !ctx.hop || sameMinor(ctx.hop, ctx.project.target.version);
-  return [
-    ...stackLateServices(ctx.project.target.stack),
-    ...(projectSearchCommunity(ctx) && finalHop ? [BATCH_INDEXER_SERVICE] : []),
-  ];
+/**
+ * Servicios que arrancan DESPUES de que el repositorio responda: Share y batch indexer. Salen del stack
+ * DEL HOP (`stackForVersion`), el mismo que genera su compose: si ese hop no lleva stack, no se pide nada
+ * (pedirlos daria `no such service`). El indexer solo en hops con Search Community. `version` = hop.
+ */
+export function lateStackServicesFor(ctx: Pick<StepContext, 'project'>, version: string): string[] {
+  const stack = stackForVersion(ctx.project.target, version);
+  if (!stack) return [];
+  return [...stackLateServices(stack), ...(hopSearchCommunity(ctx, version) ? [BATCH_INDEXER_SERVICE] : [])];
 }
 
 /** Espera a que una URL responda (codigo HTTP final) hasta `timeoutS`; devuelve el ultimo codigo. */
@@ -589,7 +591,7 @@ const provisionHop: StepDefinition = {
       // batch indexer (sin el, un namespace propio ausente deja nodos SIN indexar en silencio).
       const localPrefixes = process.env.MIGRATOR_REINDEX_PREFIXES_FILE;
       const remotePrefixes = `${dstDir}/reindex/prefixes.json`;
-      if (projectSearchCommunity(ctx) && sameMinor(hop, ctx.project.target.version) && localPrefixes) {
+      if (hopSearchCommunity(ctx, hop) && stackForVersion(ctx.project.target, hop) && localPrefixes) {
         request.reindexPrefixesFile = remotePrefixes;
       }
       const registry = imageRegistry(repoImage);

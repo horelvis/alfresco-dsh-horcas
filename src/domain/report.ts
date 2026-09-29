@@ -3,6 +3,7 @@
  * hops, evidencia, journal, experiencia). No consulta sistemas vivos: es reproducible y sin secretos.
  * Incluye los tiempos REALES medidos por paso frente a la estimacion, base para calcular la ventana de PROD.
  */
+import { stackForVersion } from './final-stack.js';
 import type { ProjectConfig } from './project-config.js';
 import type { Checkpoint } from './checkpoints.js';
 import type { HopProgress } from './hops.js';
@@ -72,10 +73,11 @@ export function measuredPhaseMinutes(checkpoints: Checkpoint[]): Record<Phase, n
  */
 export function shareAccessUrl(p: ProjectConfig): string | undefined {
   const t = p.target;
-  if (!t.stack?.share || !t.baseUrl) return undefined;
+  const stack = stackForVersion(t, t.version);
+  if (!stack?.share || !t.baseUrl) return undefined;
   try {
     const url = new URL(t.baseUrl);
-    if (!t.stack.proxy) url.port = '8081';
+    if (!stack.proxy) url.port = '8081';
     return `${url.origin}/share/`;
   } catch {
     return undefined;
@@ -140,7 +142,7 @@ export function renderMigrationReport(d: ReportData): string {
   if (share) {
     out.push(
       `Stack final: repositorio en ${t.baseUrl ?? '—'} · Share en ${share}` +
-        `${t.stack?.proxy ? ' (tras proxy, mismo origen)' : ' (SIN proxy: Share publica su propio puerto 8081)'}.`,
+        `${stackForVersion(t, t.version)?.proxy ? ' (tras proxy, mismo origen)' : ' (SIN proxy: Share publica su propio puerto 8081)'}.`,
     );
   }
   out.push('');

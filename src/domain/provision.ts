@@ -23,6 +23,7 @@ import {
   repositoryJavaOpts,
   stackInfraServices,
   shareImage,
+  stackForVersion,
   transformImage,
   type FinalStack,
 } from './final-stack.js';
@@ -781,8 +782,9 @@ export function projectToComposeRequest(
     memory,
     dataDir,
     pgBind,
-    // El stack de la version FINAL solo en el ultimo hop (los intermedios: repositorio + infra).
-    ...(project.target.stack && sameMinorVersion(acsVersion, project.target.version) ? { stack: project.target.stack } : {}),
+    // Stack del hop: `target.stackByVersion[<hop>]` si existe; si no, `target.stack` solo en la version
+    // FINAL (los intermedios: repositorio + infra). Ver `stackForVersion`.
+    ...(stackForVersion(project.target, acsVersion) ? { stack: stackForVersion(project.target, acsVersion) } : {}),
     // `target.acsImage` aplica al hop cuya version casa con el TAG de la imagen (7.4.2 -> hop 7.4); si el
     // tag no es una version, a la version FINAL. Los demas hops usan la suya (<version>.0).
     ...(project.target.acsImage && sameMinorVersion(acsVersion, acsImageVersion(project.target.acsImage) ?? project.target.version)
