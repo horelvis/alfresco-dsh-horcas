@@ -5,7 +5,6 @@
  * - ficheros/tamano/tamano maximo por el content store FS.
  *
  * NUNCA se consultan los indices de busqueda (Solr/Search Enterprise): son derivados y se regeneran.
- * Portado de DefaultSourceDiscovery/JdbcInventory/FileSystemContentStoreInventory.
  */
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';

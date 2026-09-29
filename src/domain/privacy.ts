@@ -1,5 +1,5 @@
 /**
- * Anonimizacion reversible hacia el LLM (portado de migrator-ai/privacy).
+ * Anonimizacion reversible hacia el LLM.
  *
  * Tokenizacion determinista: el mismo valor produce siempre el mismo token, de modo que el LLM puede
  * razonar con coherencia sin ver el dato original. El mapeo token->original se queda SIEMPRE en local.

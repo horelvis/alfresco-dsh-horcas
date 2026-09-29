@@ -1,7 +1,7 @@
 /**
  * Checklist pre/post-cutover, dependiente de version/edicion destino y motor de busqueda.
- * Portado de ChecklistService: Solr-off, Java 21/Tomcat 11, ActiveMQ 6.x o la Reindexing app
- * solo aplican segun la familia destino (y Solr-off solo en Enterprise).
+ * Solr-off, Java 21/Tomcat 11, ActiveMQ 6.x y el indice (Reindexing app en EE, batch indexer en CE)
+ * solo aplican segun la familia destino (Solr-off en 26.x, CE y EE).
  */
 import { requiresSolrRemoval, breakingChangeGates } from './upgrade-paths.js';
 

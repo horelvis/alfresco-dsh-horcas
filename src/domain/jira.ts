@@ -1,6 +1,5 @@
 /**
  * Export a CSV importable por el importador nativo de Jira (UTF-8, RFC 4180).
- * Portado de JiraCsvExporter: epica + issues enlazadas. No depende de Jira.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';

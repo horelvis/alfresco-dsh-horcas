@@ -1,6 +1,6 @@
 /**
  * Backup no destructivo del origen (E17): verifica-o-crea el backup de BD y content store y guarda un
- * snapshot de la configuracion. El origen NUNCA se modifica (solo se lee). Portado de BackupService.
+ * snapshot de la configuracion. El origen NUNCA se modifica (solo se lee).
  *
  * La BD usa `MIGRATOR_DB_DUMP_CMD` ({out}) o, si no, se marca como gestionada externamente.
  * El store FS se copia con `rsync` (o `MIGRATOR_CONTENT_COPY_CMD`) y se genera un manifiesto SHA-256.

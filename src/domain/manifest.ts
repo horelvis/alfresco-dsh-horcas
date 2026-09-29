@@ -1,6 +1,5 @@
 /**
  * Manifiesto de checksums SHA-256 del content store y verificacion de integridad.
- * Portado de ContentManifest/ContentManifestWriter/ContentManifestVerifier (E8/E10).
  * Rutas relativas a la raiz del store.
  */
 import { createHash } from 'node:crypto';

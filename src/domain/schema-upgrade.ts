@@ -2,7 +2,6 @@
  * Orquestacion del schema-upgrade de un hop (E7): arranca el ACS destino y espera a que aplique los
  * schema patches internos. El upgrade real lo hace el propio ACS; aqui se observa el log y se valida.
  *
- * Portado de SchemaUpgradeOrchestrator: marcadores de exito y de error.
  */
 import { sameMinor } from './hops.js';
 

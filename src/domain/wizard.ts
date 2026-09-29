@@ -2,7 +2,7 @@
  * Wizard de configuracion (E18): detecta antes que pregunta, genera el YAML del proyecto, lo valida
  * contra el JSON Schema y previsualiza ruta/estrategia antes de escribirlo.
  *
- * Portado de InitWizard. Modos: no interactivo (answers), deteccion via Discovery REST, o por
+ * Modos: no interactivo (answers), deteccion via Discovery REST, o por
  * defecto un YAML minimo valido.
  */
 import { readFile, mkdir, writeFile } from 'node:fs/promises';

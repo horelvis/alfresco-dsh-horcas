@@ -1,5 +1,5 @@
 /**
- * Selector de estrategia por perfil de documentos (portado de RuleBasedStrategySelector del core Spring).
+ * Selector de estrategia por perfil de documentos.
  * Aqui solo se aplican las reglas; los umbrales viven en `data/strategy.yaml`.
  */
 

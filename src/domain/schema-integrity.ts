@@ -1,5 +1,5 @@
 /**
- * Integridad del esquema PostgreSQL vs la referencia de la version (mismo criterio que el core Spring):
+ * Integridad del esquema PostgreSQL vs la referencia de la version:
  * detecta tablas criticas ausentes, PK ausente/incorrecta y unicos ausentes. Base del defecto de la
  * incidencia "esquema sin PK/unicidad + CDC" (filas duplicadas).
  */

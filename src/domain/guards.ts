@@ -3,7 +3,6 @@
  * el origen. Antes de cualquier paso que escriba se comprueba que el DESTINO no sea el MISMO que el
  * origen (misma base de datos o mismo content store); si lo es, se aborta.
  *
- * Portado de MigrationGuards.requireDistinctTarget/sameDatabase/sameContentStore.
  */
 import type { ProjectConfig } from './project-config.js';
 

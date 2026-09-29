@@ -1,5 +1,5 @@
 /**
- * Ejecutor de comandos con enrutado LOCAL/SSH y overrides por entorno (mismo modelo que el core Spring):
+ * Ejecutor de comandos con enrutado LOCAL/SSH y overrides por entorno:
  * `MIGRATOR_DB_DUMP_CMD` ({out}), `MIGRATOR_DB_RESTORE_CMD` ({in}), `MIGRATOR_REINDEX_CMD`
  * ({prefixesFile},{dbUrl}). Los comandos de contenedor (docker exec/run) van dentro del override.
  */

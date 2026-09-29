@@ -5,7 +5,6 @@
  * Auto-skip con `MIGRATOR_DST_PROVISION`: auto (defecto, detecta stack en ejecucion),
  * managed (provisiona siempre) o external (nunca provisiona).
  *
- * Portado de ComposeFileBuilder/ComposeTargetProvisioner/ProvisionTargetStep.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';

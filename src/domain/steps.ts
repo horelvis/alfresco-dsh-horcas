@@ -4,7 +4,7 @@
  * No es un pipeline fijo: el agente razona que pasos aplicar, en que orden y con que parametros, y
  * reutiliza la experiencia del ensayo. Cada paso es idempotente y se registra en checkpoints.
  *
- * Overrides de entorno (identicos al core): `MIGRATOR_DB_DUMP_CMD` ({out}), `MIGRATOR_DB_RESTORE_CMD`
+ * Overrides de entorno: `MIGRATOR_DB_DUMP_CMD` ({out}), `MIGRATOR_DB_RESTORE_CMD`
  * ({in}), `MIGRATOR_REINDEX_CMD` ({prefixesFile},{dbUrl}), `MIGRATOR_DST_PROVISION`.
  */
 import { mkdir, readFile, stat } from 'node:fs/promises';

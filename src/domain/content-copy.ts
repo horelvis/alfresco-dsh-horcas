@@ -2,7 +2,6 @@
  * Plan de copia del content store (E8): traduce los tipos origen/destino (FS/S3/Azure) y la estrategia
  * a un comando ejecutable (rsync local/SSH, aws s3 sync, azcopy). El delta reutiliza la misma ruta.
  *
- * Portado de ContentCopyPlanner/ContentCopier.
  */
 
 export type StoreType = 'FS' | 'S3' | 'AZURE';

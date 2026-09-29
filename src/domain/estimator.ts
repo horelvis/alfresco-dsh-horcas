@@ -1,5 +1,5 @@
 /**
- * Estimador de tiempos por fase (portado de SimpleMigrationEstimator del core Spring).
+ * Estimador de tiempos por fase.
  * Aqui solo hay ARITMETICA: los parametros/umbrales viven en `data/estimation.yaml`.
  */
 import { readFileSync } from 'node:fs';

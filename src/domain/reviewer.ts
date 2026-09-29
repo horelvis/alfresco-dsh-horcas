@@ -3,7 +3,6 @@
  * veredicto estructurado. NO ejecuta cambios. Los datos se anonimizan antes de salir al LLM y, si el
  * LLM falla o responde algo no parseable, el veredicto es ABSTAIN (fail-open a "no opino", nunca a "apruebo").
  *
- * Portado de LlmMasterReviewer/ReviewPromptBuilder. El cliente LLM es inyectable (compatible OpenAI).
  */
 import { createHash } from 'node:crypto';
 import { anonymizerFor, policyFromEnv, type AnonymizationPolicy } from './privacy.js';

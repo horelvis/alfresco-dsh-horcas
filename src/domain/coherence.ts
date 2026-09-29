@@ -1,6 +1,6 @@
 /**
  * Coherencia DB <-> content store y forense de referencias colgantes (read-only sobre el origen).
- * Portado del core Spring: cuenta refs/orphans/dangling y, para cada colgado, resuelve nodo/tipo/ruta.
+ * Cuenta refs/orphans/dangling y, para cada colgado, resuelve nodo/tipo/ruta.
  */
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
