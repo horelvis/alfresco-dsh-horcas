@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-alfresco-migrator",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "DeepSeek Harness plugin: Alfresco Content Services migration agent (read-only tools + gated write tools, safety rules encapsulated in the harness).",
