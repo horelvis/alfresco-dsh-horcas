@@ -107,6 +107,9 @@ desde ese punto** (`resumeFrom`); cada intento queda registrado.
 La experiencia se guarda en `.migrator/experience.jsonl` (una campaña por proyecto+stage, con su historial
 de intentos); complementa la memoria conversacional del arnés y permite reanudar sin repetir lo ya hecho.
 
+El **documento de migración** lo genera el agente al cerrar con `migrator_report`. Ejemplo (anonimizado):
+[`docs/example-informe-migracion.md`](docs/example-informe-migracion.md).
+
 ## Guardrails de seguridad (todos)
 La seguridad **no depende del prompt**: está impuesta en código determinista.
 
